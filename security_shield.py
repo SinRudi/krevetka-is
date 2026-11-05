@@ -21,6 +21,52 @@ def log_sec_event(get_db, event_type, details=""):
         pass
 
 
+def validate_order_items(data, get_db):
+    """Reject malformed carts and client-supplied prices/names not in the active menu."""
+    if not isinstance(data, dict):
+        return "Некорректные данные заказа"
+
+    items = data.get("items")
+    if not isinstance(items, list) or not items or len(items) > 50:
+        return "В заказе должно быть от 1 до 50 позиций"
+
+    db = get_db()
+    for item in items:
+        if not isinstance(item, dict):
+            return "Некорректная позиция заказа"
+
+        raw_id = item.get("id", item.get("menu_id"))
+        raw_qty = item.get("qty", 1)
+        raw_price = item.get("price")
+        name = item.get("name")
+        mods = item.get("mods", "")
+
+        # Accept integer IDs and digit strings for compatibility, but reject bools/floats.
+        if isinstance(raw_id, bool) or not isinstance(raw_id, (int, str)) or not str(raw_id).isdigit():
+            return "Некорректный товар в заказе"
+        if isinstance(raw_qty, bool) or not isinstance(raw_qty, (int, str)) or not str(raw_qty).isdigit():
+            return "Количество должно быть целым числом от 1 до 99"
+        if not 1 <= int(raw_qty) <= 99:
+            return "Количество должно быть целым числом от 1 до 99"
+        if isinstance(raw_price, bool) or not isinstance(raw_price, (int, str)) or not str(raw_price).isdigit():
+            return "Некорректная цена товара"
+        if not isinstance(name, str) or len(name) > 200:
+            return "Некорректное название товара"
+        if not isinstance(mods, str) or len(mods) > 300:
+            return "Комментарий к позиции слишком длинный"
+
+        menu_item = db.execute(
+            "SELECT name, price FROM menu WHERE id=? AND available=1",
+            (int(raw_id),)
+        ).fetchone()
+        if not menu_item:
+            return "Одна из позиций больше недоступна — обновите меню"
+        if int(raw_price) != int(menu_item["price"] or 0) or name != menu_item["name"]:
+            return "Цена или название товара изменились — обновите меню и повторите заказ"
+
+    return None
+
+
 def init_security_shield(app, get_db):
     base_dir = os.path.dirname(os.path.abspath(__file__))
     secret_file = os.path.join(base_dir, ".sushi_secret")
@@ -100,6 +146,13 @@ def init_security_shield(app, get_db):
                     return "Доступ к финансовому контуру закрыт администратором", 403
             if path.startswith("/admin/users") or path.startswith("/admin/zone_rate") or path.startswith("/admin/backup_db"):
                 return "Управление штатом и базой доступно только Администратору", 403
+
+        # Validate item identity and price from the database, never trust the browser's cart values.
+        if request.method == "POST" and path in ("/api/public_order", "/api/create_order"):
+            payload = request.get_json(silent=True)
+            validation_error = validate_order_items(payload, get_db)
+            if validation_error:
+                return jsonify({"success": False, "error": validation_error}), 400
 
         # 3. СТРОГАЯ ПРОВЕРКА CSRF-ТОКЕНА НА ИЗМЕНЯЮЩИХ ЗАПРОСАХ
         if request.method in ("POST", "PUT", "DELETE"):
