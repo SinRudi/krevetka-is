@@ -1,0 +1,60 @@
+<!DOCTYPE html>
+<html lang="ru">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <meta name="description" content="Креветка — удобный сервис заказа роллов и суши с доставкой и самовывозом. Выберите блюда, оформите заказ онлайн и следите за его статусом.">
+  <meta name="theme-color" content="#101114">
+  <title>О сервисе — Креветка</title>
+  <style>
+    :root { color-scheme: dark; --bg: #101114; --panel: #191a1f; --line: #2b2c33; --text: #f7f7f8; --muted: #b2b3bb; --accent: #ff7a00; }
+    * { box-sizing: border-box; }
+    body { margin: 0; min-height: 100vh; background: radial-gradient(900px 420px at 15% -10%, rgba(255,122,0,.18), transparent 65%), var(--bg); color: var(--text); font: 16px/1.65 system-ui, -apple-system, "Segoe UI", sans-serif; }
+    main { width: min(900px, calc(100% - 32px)); margin: 0 auto; padding: 48px 0 64px; }
+    nav { margin-bottom: 30px; }
+    a { color: #ff9a42; text-decoration: none; }
+    a:hover { text-decoration: underline; }
+    .back { display: inline-flex; gap: 8px; align-items: center; font-size: 14px; font-weight: 650; }
+    .card { padding: clamp(24px, 5vw, 48px); border: 1px solid var(--line); border-radius: 22px; background: rgba(25,26,31,.92); box-shadow: 0 24px 70px rgba(0,0,0,.25); }
+    .eyebrow { margin: 0 0 10px; color: var(--accent); font-size: 12px; font-weight: 800; letter-spacing: .12em; text-transform: uppercase; }
+    h1 { margin: 0; font-size: clamp(32px, 6vw, 52px); line-height: 1.1; letter-spacing: -.035em; }
+    .lead { max-width: 700px; margin: 18px 0 0; color: var(--muted); font-size: 18px; }
+    h2 { margin: 34px 0 10px; font-size: 21px; line-height: 1.3; }
+    p { margin: 10px 0; }
+    .features { display: grid; grid-template-columns: repeat(auto-fit, minmax(210px, 1fr)); gap: 12px; margin: 22px 0 0; padding: 0; list-style: none; }
+    .features li { padding: 16px; border: 1px solid var(--line); border-radius: 14px; background: #141519; }
+    .features b { display: block; margin-bottom: 4px; }
+    .features span { color: var(--muted); font-size: 14px; }
+    .cta { display: inline-flex; align-items: center; justify-content: center; min-height: 46px; margin-top: 26px; padding: 0 20px; border-radius: 10px; background: linear-gradient(135deg, #ff8a1f, #f05a00); color: white; font-weight: 750; }
+    .cta:hover { text-decoration: none; filter: brightness(1.08); }
+    footer { margin-top: 24px; color: #85868e; font-size: 13px; text-align: center; }
+  </style>
+</head>
+<body>
+  <main>
+    <nav><a class="back" href="/site">← Вернуться к меню</a></nav>
+    <article class="card">
+      <p class="eyebrow">Креветка · заказ онлайн</p>
+      <h1>Вкусный заказ — без лишних шагов</h1>
+      <p class="lead">«Креветка» — онлайн-сервис заказа роллов, суши и других блюд. Просматривайте меню, собирайте заказ и выбирайте удобный способ получения — доставка или самовывоз.</p>
+
+      <h2>Всё необходимое для заказа — на одной странице</h2>
+      <p>Понятный каталог помогает быстро найти нужные блюда и увидеть их состав и стоимость. Добавьте выбранные позиции в корзину, укажите контактные данные и адрес, примените промокод и отправьте заказ онлайн.</p>
+
+      <ul class="features">
+        <li><b>Меню и поиск</b><span>Категории блюд, поиск по названию и информация о составе.</span></li>
+        <li><b>Доставка или самовывоз</b><span>Выберите удобный способ получения и укажите адрес для доставки.</span></li>
+        <li><b>Удобное оформление</b><span>Корзина, расчёт итоговой суммы и поддержка промокодов.</span></li>
+        <li><b>Статус заказа</b><span>После оформления можно перейти к странице отслеживания заказа.</span></li>
+        <li><b>Повторный заказ</b><span>Для вернувшихся клиентов доступно быстрое повторение предыдущего заказа.</span></li>
+        <li><b>На любом устройстве</b><span>Сайт адаптирован для смартфонов, планшетов и компьютеров.</span></li>
+      </ul>
+
+      <h2>Простой путь от выбора до получения</h2>
+      <p>Выберите блюда, проверьте корзину, заполните данные и отправьте заказ. Если предпочтительнее забрать его самостоятельно, укажите самовывоз при оформлении. Текущие условия доставки, способы оплаты и доступность заказов отображаются на странице меню.</p>
+      <a class="cta" href="/site">Перейти к меню</a>
+    </article>
+    <footer>Креветка — заказывайте удобно, получайте с удовольствием.</footer>
+  </main>
+</body>
+</html>
