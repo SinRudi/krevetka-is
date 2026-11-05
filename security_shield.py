@@ -21,8 +21,18 @@ def log_sec_event(get_db, event_type, details=""):
         pass
 
 
+def _as_int(value, default=None):
+    if isinstance(value, bool):
+        return default
+    if isinstance(value, int):
+        return value
+    if isinstance(value, str) and value.strip().isdigit():
+        return int(value.strip())
+    return default
+
+
 def validate_order_items(data, get_db):
-    """Reject malformed carts and client-supplied prices/names not in the active menu."""
+    """Reject malformed carts and client-side price/name tampering."""
     if not isinstance(data, dict):
         return "Некорректные данные заказа"
 
@@ -36,34 +46,56 @@ def validate_order_items(data, get_db):
             return "Некорректная позиция заказа"
 
         raw_id = item.get("id", item.get("menu_id"))
-        raw_qty = item.get("qty", 1)
+        raw_qty = item.get("qty", item.get("quantity", 1))
         raw_price = item.get("price")
         name = item.get("name")
         mods = item.get("mods", "")
 
-        # Accept integer IDs and digit strings for compatibility, but reject bools/floats.
-        if isinstance(raw_id, bool) or not isinstance(raw_id, (int, str)) or not str(raw_id).isdigit():
+        item_id = _as_int(raw_id)
+        qty = _as_int(raw_qty)
+        price = _as_int(raw_price)
+
+        if item_id is None or item_id <= 0:
             return "Некорректный товар в заказе"
-        if isinstance(raw_qty, bool) or not isinstance(raw_qty, (int, str)) or not str(raw_qty).isdigit():
+        if qty is None or not 1 <= qty <= 99:
             return "Количество должно быть целым числом от 1 до 99"
-        if not 1 <= int(raw_qty) <= 99:
-            return "Количество должно быть целым числом от 1 до 99"
-        if isinstance(raw_price, bool) or not isinstance(raw_price, (int, str)) or not str(raw_price).isdigit():
+        if price is None or price < 0:
             return "Некорректная цена товара"
-        if not isinstance(name, str) or len(name) > 200:
+        if not isinstance(name, str) or len(name.strip()) < 2 or len(name) > 200:
             return "Некорректное название товара"
         if not isinstance(mods, str) or len(mods) > 300:
             return "Комментарий к позиции слишком длинный"
 
         menu_item = db.execute(
-            "SELECT name, price FROM menu WHERE id=? AND available=1",
-            (int(raw_id),)
+            "SELECT id, name, price, available FROM menu WHERE id=?",
+            (item_id,)
         ).fetchone()
         if not menu_item:
             return "Одна из позиций больше недоступна — обновите меню"
-        if int(raw_price) != int(menu_item["price"] or 0) or name != menu_item["name"]:
-            return "Цена или название товара изменились — обновите меню и повторите заказ"
+        if not menu_item["available"]:
+            return "Одна из позиций временно недоступна"
+        if int(price) != int(menu_item["price"] or 0):
+            return "Цена товара изменилась — обновите корзину и повторите заказ"
+        if name.strip() != (menu_item["name"] or "").strip():
+            return "Название товара не совпадает с активным меню"
 
+    return None
+
+
+def validate_promo_payload(data):
+    """Promo requests can only use short printable values."""
+    if not isinstance(data, dict):
+        return "Некорректные данные промокода"
+    promo = data.get("promo")
+    if promo is None:
+        return None
+    if not isinstance(promo, str):
+        return "Промокод должен быть строкой"
+    promo = promo.strip()
+    if not promo or len(promo) > 32:
+        return "Некорректный промокод"
+    if any(ch.isspace() for ch in promo):
+        return "Промокод не должен содержать пробелов"
     return None
 
 
@@ -83,6 +115,7 @@ def init_security_shield(app, get_db):
     app.config["SESSION_COOKIE_HTTPONLY"] = True
     app.config["SESSION_COOKIE_SAMESITE"] = "Lax"
     app.config["PROPAGATE_EXCEPTIONS"] = False
+    app.config["MAX_CONTENT_LENGTH"] = 16 * 1024 * 1024
 
     def get_csrf_token():
         if "_csrf_token" not in session:
@@ -104,7 +137,7 @@ def init_security_shield(app, get_db):
         if path.startswith("/static/") or path in ("/manifest.json", "/sw.js", "/favicon.ico"):
             return None
 
-        # 1. 4G-ФАЙРВОЛ: блокируем доступ к /admin, /accounting снаружи через туннель
+        # 1. 4G-ФАЙРВОЛ
         if is_external_tunnel_request():
             allowed_ext = (
                 "/site", "/track", "/rate", "/login", "/logout", "/courier",
@@ -147,14 +180,22 @@ def init_security_shield(app, get_db):
             if path.startswith("/admin/users") or path.startswith("/admin/zone_rate") or path.startswith("/admin/backup_db"):
                 return "Управление штатом и базой доступно только Администратору", 403
 
-        # Validate item identity and price from the database, never trust the browser's cart values.
+        # 3. Проверка корзины и промокода по актуальному меню
         if request.method == "POST" and path in ("/api/public_order", "/api/create_order"):
             payload = request.get_json(silent=True)
+            if not isinstance(payload, dict):
+                return jsonify({"success": False, "error": "Некорректный формат заказа"}), 400
             validation_error = validate_order_items(payload, get_db)
             if validation_error:
                 return jsonify({"success": False, "error": validation_error}), 400
 
-        # 3. СТРОГАЯ ПРОВЕРКА CSRF-ТОКЕНА НА ИЗМЕНЯЮЩИХ ЗАПРОСАХ
+        if request.method == "POST" and path == "/api/check_promo":
+            payload = request.get_json(silent=True)
+            promo_error = validate_promo_payload(payload)
+            if promo_error:
+                return jsonify({"success": False, "error": promo_error}), 400
+
+        # 4. CSRF
         if request.method in ("POST", "PUT", "DELETE"):
             if path in ("/api/public_order", "/api/check_promo", "/login"):
                 origin = request.headers.get("Origin") or request.headers.get("Referer") or ""
@@ -180,8 +221,10 @@ def init_security_shield(app, get_db):
         response.headers["X-Content-Type-Options"] = "nosniff"
         response.headers["X-Frame-Options"] = "SAMEORIGIN"
         response.headers["Referrer-Policy"] = "strict-origin-when-cross-origin"
+        response.headers["Permissions-Policy"] = "geolocation=(), camera=(), microphone=()"
         response.headers["X-XSS-Protection"] = "1; mode=block"
-        response.headers["Content-Security-Policy"] = "frame-ancestors 'self';"
+        response.headers["Content-Security-Policy"] = "frame-ancestors 'self'; default-src 'self'; img-src 'self' data: https:; script-src 'self' 'unsafe-inline'; style-src 'self' 'unsafe-inline'"
+        response.headers["Cache-Control"] = "no-store, no-cache, must-revalidate, max-age=0"
 
         if response.content_type and response.content_type.startswith("text/html"):
             try:
