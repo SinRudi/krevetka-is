@@ -1,0 +1,332 @@
+<!DOCTYPE html><html lang="ru"><head><meta name="csrf-token" content="{{ csrf_token() }}"><script src="/static/security.js"></script><meta charset="UTF-8">
+<title>Склад и Цех Заготовок PRO — {{ brand.brand_name }}</title>
+<link rel="stylesheet" href="/static/pro_style.css">
+<style>
+body{margin:0;padding:25px}
+.topbar{display:flex;justify-content:space-between;align-items:center;margin-bottom:20px;flex-wrap:wrap;gap:10px}
+h1{margin:0;color:var(--accent);font-size:26px}a{color:var(--accent);text-decoration:none;font-weight:bold}
+.tabs{display:flex;gap:10px;margin-bottom:20px;flex-wrap:wrap}
+.panel{display:none}.panel.active{display:block}
+table{width:100%;border-collapse:collapse;margin-bottom:20px}
+.btn{background:var(--accent);color:#fff;border:none;padding:8px 14px;border-radius:8px;cursor:pointer;font-weight:bold;font-size:13px}
+.btn-danger{background:#ef4444;color:#fff}.btn-edit{background:#10b981;color:#fff}
+.badge-prep{background:#3b82f6;color:#fff;padding:3px 8px;border-radius:6px;font-size:11px;margin-left:5px;font-weight:bold}
+.badge-waste{background:rgba(245,158,11,0.18);color:#f59e0b;border:1px solid #f59e0b;padding:2px 6px;border-radius:6px;font-size:11px;font-weight:bold}
+.prep-card{background:var(--bg-panel);border:1px solid var(--border);border-radius:16px;padding:20px;margin-bottom:20px}
+.tare-bar{display:flex;gap:8px;align-items:center;flex-wrap:wrap;background:var(--bg-card);padding:12px 16px;border-radius:12px;border:1px solid var(--border);margin-bottom:15px;position:sticky;top:10px;z-index:20}
+.tare-btn{background:var(--bg-panel);color:var(--text-main);border:1px solid var(--border);padding:6px 12px;border-radius:8px;cursor:pointer;font-size:12px;font-weight:bold}
+.tare-btn:hover{border-color:var(--accent);color:var(--accent)}
+.inv-summary{display:flex;gap:20px;flex-wrap:wrap;align-items:center}
+</style>
+<script>if(localStorage.getItem('theme') === 'light') document.documentElement.classList.add('light-theme');</script>
+</head><body>
+
+<div class="topbar">
+    <div>
+        <h1>📦 Склад, Отходы и Цех Заготовок PRO</h1>
+        <div style="color:var(--text-muted);font-size:14px;margin-top:4px">Капитал на складе: <b style="color:#10b981">{{ total_stock_value }} ₽</b></div>
+    </div>
+    <div style="display:flex;gap:15px"><a href="/autopilot" style="color:#10b981">🧠 AI Автопилот</a> | <a href="/admin">← В дашборд</a><a href="/">🖥️ В кассу</a></div>
+</div>
+
+<div class="tabs">
+    <button class="tab-btn active" id="btn-tab-stock" onclick="showTab('tab-stock', this)">📦 1. Сырье, Заготовки и % Отхода</button>
+    <button class="tab-btn" id="btn-tab-preps" onclick="showTab('tab-preps', this)">🍲 2. Цех Заготовок (ТТК П/Ф и Варка)</button>
+    <button class="tab-btn" id="btn-tab-inv" onclick="showTab('tab-inv', this)">⚖️ 3. Умная Инвентаризация (Тара + П/Ф)</button>
+    <button class="tab-btn" id="btn-tab-logs" onclick="showTab('tab-logs', this)">📜 4. Журнал операций</button>
+</div>
+
+<!-- ВКЛАДКА 1: ОСТАТКИ И ПРОЦЕНТ ОТХОДА -->
+<div id="tab-stock" class="panel active">
+
+    <div class="stat-card" style="padding:18px;margin-bottom:20px;border:1px solid #3b82f6 !important">
+        <h3 style="margin:0 0 10px;color:#3b82f6">🐟 Акт разделки тушки / сырья (Авто-расчет % отхода и оприходование филе и обрези)</h3>
+        <form method="post" action="/admin/warehouse/butcher" style="display:flex;flex-wrap:wrap;gap:10px;align-items:end">
+            <div>
+                <label style="font-size:11px;color:var(--text-muted);display:block">Что разделываем (Брутто)</label>
+                <select name="raw_id" required style="padding:9px;width:210px">
+                    {% for i in ingredients %}<option value="{{ i.id }}">{{ i.name }} (ост: {{ i.stock|round(1) }} {{ i.unit }})</option>{% endfor %}
+                </select>
+            </div>
+            <div>
+                <label style="font-size:11px;color:var(--text-muted);display:block">Вес тушки до разделки</label>
+                <input type="number" step="any" name="raw_weight" placeholder="Напр. 5200" required style="width:125px;padding:9px">
+            </div>
+            <div>
+                <label style="font-size:11px;color:#10b981;display:block">Выход 1 (Чистое филе)</label>
+                <select name="out1_id" style="padding:9px;width:185px">
+                    <option value="0">-- Выберите П/Ф или позицию --</option>
+                    {% for i in ingredients %}<option value="{{ i.id }}">{{ i.name }}</option>{% endfor %}
+                </select>
+            </div>
+            <div>
+                <label style="font-size:11px;color:#10b981;display:block">Вес выхода 1</label>
+                <input type="number" step="any" name="out1_weight" placeholder="Напр. 3450" required style="width:105px;padding:9px">
+            </div>
+            <div>
+                <label style="font-size:11px;color:#f59e0b;display:block">Выход 2 (Обрезь / Теша / Суп)</label>
+                <select name="out2_id" style="padding:9px;width:185px">
+                    <option value="0">-- Нет второго выхода --</option>
+                    {% for i in ingredients %}<option value="{{ i.id }}">{{ i.name }}</option>{% endfor %}
+                </select>
+            </div>
+            <div>
+                <label style="font-size:11px;color:#f59e0b;display:block">Вес выхода 2</label>
+                <input type="number" step="any" name="out2_weight" value="0" style="width:95px;padding:9px">
+            </div>
+            <button type="submit" class="btn" style="background:#3b82f6;padding:10px 16px">🔪 Провести разделку</button>
+        </form>
+    </div>
+
+    <form method="post" action="/admin/ingredient/add" class="stat-card" style="display:flex;flex-wrap:wrap;gap:10px;padding:16px;align-items:end;margin-bottom:20px">
+        <div><label style="font-size:11px;color:var(--text-muted);display:block">Наименование</label><input name="name" placeholder="Лосось / Огурец / Рис вареный П/Ф" required style="width:230px;padding:9px"></div>
+        <div><label style="font-size:11px;color:var(--text-muted);display:block">Нач. остаток</label><input name="stock" type="number" step="any" value="0" style="width:85px;padding:9px"></div>
+        <div><label style="font-size:11px;color:var(--text-muted);display:block">Ед. изм.</label><input name="unit" placeholder="г, мл, шт" required style="width:75px;padding:9px"></div>
+        <div><label style="font-size:11px;color:var(--text-muted);display:block">Цена Брутто (за 1 ед)</label><input name="cost_price" type="number" step="any" value="0" style="width:120px;padding:9px"></div>
+        <div><label style="font-size:11px;color:#f59e0b;display:block">✂️ % Отхода (чистка/разделка)</label><input name="waste_pct" type="number" step="any" min="0" max="95" value="0" placeholder="0%" style="width:140px;padding:9px"></div>
+        <label style="font-size:13px;padding:9px;background:var(--bg-card);border-radius:8px;border:1px solid var(--border);cursor:pointer;display:flex;align-items:center;gap:6px">
+            <input type="checkbox" name="is_prep" value="1"> 🍲 Это Заготовка (П/Ф)
+        </label>
+        <button type="submit" class="btn" style="padding:10px 18px">➕ Добавить на склад</button>
+    </form>
+
+    <table>
+        <tr>
+            <th>Позиция</th>
+            <th>Остаток на складе</th>
+            <th>Цена Брутто (Закуп)</th>
+            <th>✂️ % Отхода</th>
+            <th>🔥 Цена Нетто (В блюдо)</th>
+            <th>Операция (Приход / Списание / Изм. отхода)</th>
+            <th>Удал.</th>
+        </tr>
+        {% for i in ingredients %}
+        {% set w = i.waste_pct or 0 %}
+        {% set net_price = (i.cost_price / (1 - w/100)) if w < 95 and w > 0 else i.cost_price %}
+        <tr>
+            <td><b>{{ i.name }}</b> {% if i.is_prep %}<span class="badge-prep">🍲 П/Ф</span>{% endif %}</td>
+            <td style="font-weight:bold;color:{% if i.stock <= 0 %}#ef4444{% else %}#10b981{% endif %}">{{ i.stock|round(2) }} {{ i.unit }}</td>
+            <td>{{ i.cost_price|round(3) }} ₽/{{ i.unit }}</td>
+            <td>{% if w > 0 %}<span class="badge-waste">Отход {{ w }}%</span>{% else %}<span style="color:var(--text-muted)">0%</span>{% endif %}</td>
+            <td style="color:#f59e0b;font-weight:bold">{{ net_price|round(3) }} ₽/{{ i.unit }}</td>
+            <td>
+                <form method="post" action="/admin/ingredient/update/{{ i.id }}" style="display:flex;gap:5px;align-items:center;flex-wrap:wrap">
+                    <select name="action" style="padding:6px">
+                        <option value="add">➕ Приход</option>
+                        <option value="writeoff">➖ Списать (Стафф/Брак)</option>
+                        <option value="settings">⚙️ Сохранить цену/% отхода</option>
+                    </select>
+                    <input type="number" step="any" name="val" placeholder="Кол-во" style="width:75px;padding:6px">
+                    <input type="number" step="any" name="cost_price" value="{{ i.cost_price }}" title="Цена закупа за 1 ед." style="width:70px;padding:6px">
+                    <input type="number" step="any" name="waste_pct" value="{{ w }}" title="% отхода при чистке/разделке" placeholder="% отх" style="width:60px;padding:6px">
+                    <input type="text" name="reason" placeholder="Комментарий (Стафф, накладная)" style="width:140px;padding:6px">
+                    <button type="submit" class="btn btn-edit" style="padding:6px 12px">ОК</button>
+                </form>
+            </td>
+            <td><form method="post" action="/admin/ingredient/delete/{{ i.id }}" onsubmit="return confirm('Удалить позицию?');"><button class="btn btn-danger" style="padding:6px 10px">🗑️</button></form></td>
+        </tr>
+        {% endfor %}
+    </table>
+</div>
+
+<!-- ВКЛАДКА 2: ЦЕХ ЗАГОТОВОК (ТТК П/Ф И ПРИГОТОВЛЕНИЕ) -->
+<div id="tab-preps" class="panel">
+    <div class="stat-card" style="padding:15px;margin-bottom:20px;line-height:1.5">
+        💡 <b>Как работает Цех Заготовок:</b> Любую позицию с галочкой <b>«🍲 П/Ф»</b> (например, <i>Рис вареный, Соус Спайси, Замес Краб, Тесто пицца, Филе лосося</i>) можно собрать из сырья. Укажите, сколько сырья идет на 1 замес и какой получается <b>выход готовой заготовки</b> (с учетом ужарки, уварки, привара воды или отхода разделки). Программа сама вычислит себестоимость 1 грамма П/Ф!
+    </div>
+
+    {% if not preps %}
+    <div class="stat-card" style="padding:30px;text-align:center;color:var(--text-muted)">
+        У вас пока нет ни одной позиции с отметкой «🍲 Это Заготовка (П/Ф)».<br>Создайте её во вкладке «1. Сырье и Заготовки» (например: <b>Рис вареный П/Ф</b> в граммах).
+    </div>
+    {% endif %}
+
+    {% for p in preps %}
+    <div class="prep-card">
+        <div style="display:flex;justify-content:space-between;align-items:center;flex-wrap:wrap;gap:12px;border-bottom:1px solid var(--border);padding-bottom:12px;margin-bottom:15px">
+            <div>
+                <h2 style="margin:0;color:#3b82f6">🍲 {{ p.name }}</h2>
+                <div style="font-size:13px;color:var(--text-muted);margin-top:4px">
+                    В наличии на кухне: <b style="color:#10b981">{{ p.stock|round(2) }} {{ p.unit }}</b> |
+                    Вес сырья в закладке: <b>{{ p.raw_weight }} {{ p.unit }}</b> →
+                    Выход готового П/Ф: <b style="color:var(--accent)">{{ p.prep_yield }} {{ p.unit }}</b> |
+                    Себестоимость П/Ф: <b style="color:#f59e0b">{{ p.cost_price|round(3) }} ₽/{{ p.unit }}</b>
+                </div>
+            </div>
+            <form method="post" action="/admin/prep/produce/{{ p.id }}" style="display:flex;gap:8px;align-items:center;background:var(--bg-card);padding:10px 14px;border-radius:12px;border:1px solid var(--border)">
+                <span style="font-size:13px;font-weight:bold">Сварить / Замесить партий:</span>
+                <input type="number" step="any" name="batches" value="1" min="0.1" style="width:65px;padding:6px;text-align:center">
+                <button type="submit" class="btn btn-edit">🔥 Приготовить П/Ф (+{{ p.prep_yield }} {{ p.unit }})</button>
+            </form>
+        </div>
+
+        <form method="post" action="/admin/prep/save/{{ p.id }}">
+            <div style="display:grid;grid-template-columns:repeat(auto-fill,minmax(240px,1fr));gap:10px;margin-bottom:15px">
+                {% set existing = {} %}
+                {% for r in p.recipe %}{% set _ = existing.update({r.raw_id: r.amount}) %}{% endfor %}
+                {% for raw in raw_ings %}
+                <div style="background:var(--bg-card);padding:8px 12px;border-radius:10px;border:1px solid var(--border);display:flex;justify-content:space-between;align-items:center">
+                    <span style="font-size:13px">{{ raw.name }} <small style="color:var(--text-muted)">({{ raw.unit }}{% if raw.waste_pct %}, отх.{{ raw.waste_pct }}%{% endif %})</small></span>
+                    <input type="number" step="any" name="raw_{{ raw.id }}" value="{{ existing.get(raw.id, '') }}" placeholder="0" style="width:75px;padding:5px;text-align:right">
+                </div>
+                {% endfor %}
+            </div>
+            <div style="display:flex;justify-content:space-between;align-items:center;flex-wrap:wrap;gap:10px">
+                <div style="display:flex;align-items:center;gap:10px">
+                    <label style="font-size:14px;font-weight:bold;color:var(--accent)">⚖️ Выход готовой заготовки с 1 замеса ({{ p.unit }}):</label>
+                    <input type="number" step="any" name="prep_yield" value="{{ p.prep_yield }}" required style="width:110px;padding:8px;font-weight:bold">
+                    <span style="font-size:12px;color:var(--text-muted)">(учитывает привар воды у риса или уварку соуса)</span>
+                </div>
+                <button type="submit" class="btn">💾 Сохранить ТТК заготовки и пересчитать себестоимость</button>
+            </div>
+        </form>
+    </div>
+    {% endfor %}
+</div>
+
+<!-- ВКЛАДКА 3: УМНАЯ ИНВЕНТАРИЗАЦИЯ С ВЫЧЕТОМ ТАРЫ И СУММАТОРОМ -->
+<div id="tab-inv" class="panel">
+    <form method="post" action="/admin/warehouse/inventory">
+        <div class="tare-bar">
+            <div style="font-size:13px"><b>🧮 Калькулятор тары и сумматор:</b> кликните в поле веса (можно писать <code style="color:var(--accent)">1200+450+300</code>) и нажмите кнопку тары, чтобы вычесть вес посуды:</div>
+            <button type="button" class="tare-btn" onclick="applyTare(50)">-50г (Соусник/Бут)</button>
+            <button type="button" class="tare-btn" onclick="applyTare(180)">-180г (Контейнер)</button>
+            <button type="button" class="tare-btn" onclick="applyTare(350)">-350г (GN 1/6)</button>
+            <button type="button" class="tare-btn" onclick="applyTare(500)">-500г (GN 1/3)</button>
+            <button type="button" class="tare-btn" onclick="applyTare(800)">-800г (GN 1/2)</button>
+            <button type="button" class="tare-btn" onclick="applyTare(1200)">-1200г (Кастрюля/Таз)</button>
+        </div>
+
+        <div class="stat-card" style="padding:16px;margin-bottom:15px;display:flex;justify-content:space-between;align-items:center;flex-wrap:wrap;gap:15px">
+            <div class="inv-summary">
+                <div>Излишки: <b id="inv-plus" style="color:#10b981">+0 ₽</b></div>
+                <div>Недостача: <b id="inv-minus" style="color:#ef4444">0 ₽</b></div>
+                <div>Итоговый баланс ревизии: <b id="inv-net" style="font-size:18px">0 ₽</b></div>
+                <label style="background:var(--bg-card);padding:8px 12px;border-radius:8px;border:1px solid var(--border);cursor:pointer;font-size:13px;display:flex;align-items:center;gap:6px">
+                    <input type="checkbox" name="decompose_preps" value="1">
+                    🔄 <b>Разложить остатки П/Ф обратно в сырье</b> (если заготовки на столах не проводились через кнопку варки)
+                </label>
+            </div>
+            <button type="submit" class="btn btn-edit" style="padding:12px 22px;font-size:15px">✅ Применить ревизию</button>
+        </div>
+
+        <table>
+            <tr><th>Позиция</th><th>Тип</th><th>По программе</th><th>Факт с весов (можно через +)</th><th>Разница</th><th>Результат (₽)</th></tr>
+            {% for i in ingredients %}
+            <tr>
+                <td><b>{{ i.name }}</b> ({{ i.unit }})</td>
+                <td>{% if i.is_prep %}<span class="badge-prep">🍲 П/Ф Заготовка</span>{% else %}<span style="color:var(--text-muted);font-size:12px">Сырье</span>{% endif %}</td>
+                <td id="sys-{{ i.id }}" data-stock="{{ i.stock }}" data-cost="{{ i.cost_price }}">{{ i.stock|round(2) }} {{ i.unit }}</td>
+                <td>
+                    <input type="text" id="inp-{{ i.id }}" name="fact_{{ i.id }}" placeholder="{{ i.stock|round(2) }} (напр. 1000+500)"
+                           onfocus="lastFocusedInput=this"
+                           oninput="evalAndCalc({{ i.id }}, this)"
+                           onblur="finalizeExpr({{ i.id }}, this)"
+                           style="width:190px;padding:8px;font-weight:bold">
+                </td>
+                <td id="diff-{{ i.id }}" style="font-weight:bold;color:var(--text-muted)">0</td>
+                <td id="rub-{{ i.id }}" class="rub-cell" data-rub="0" style="font-weight:bold;color:var(--text-muted)">0 ₽</td>
+            </tr>
+            {% endfor %}
+        </table>
+    </form>
+</div>
+
+<!-- ВКЛАДКА 4: ЖУРНАЛ ДВИЖЕНИЙ -->
+<div id="tab-logs" class="panel">
+    <table>
+        <tr><th>Дата и время</th><th>Позиция</th><th>Операция</th><th>Изменение</th><th>Сумма (₽)</th><th>Детали / Причина</th><th>Сотрудник</th></tr>
+        {% for l in logs %}
+        <tr>
+            <td style="color:var(--text-muted)">{{ l.created_at }}</td>
+            <td><b>{{ l.ing_name }}</b></td>
+            <td><span class="badge-prep" style="background:var(--bg-card);border:1px solid var(--border)">{{ l.op_type }}</span></td>
+            <td style="font-weight:bold;color:{% if l.change_amount >= 0 %}#10b981{% else %}#ef4444{% endif %}">{% if l.change_amount > 0 %}+{% endif %}{{ l.change_amount|round(2) }}</td>
+            <td style="font-weight:bold">{{ l.cost_impact }} ₽</td>
+            <td style="color:var(--text-muted)">{{ l.reason }}</td>
+            <td>{{ l.username }}</td>
+        </tr>
+        {% endfor %}
+    </table>
+</div>
+
+<script>
+let lastFocusedInput = null;
+
+function showTab(id, btn){
+    document.querySelectorAll('.panel').forEach(p=>p.classList.remove('active'));
+    document.querySelectorAll('.tab-btn').forEach(b=>b.classList.remove('active'));
+    document.getElementById(id).classList.add('active');
+    btn.classList.add('active');
+}
+
+window.addEventListener('DOMContentLoaded', () => {
+    if(location.hash === '#tab-preps') showTab('tab-preps', document.getElementById('btn-tab-preps'));
+    if(location.hash === '#tab-logs') showTab('tab-logs', document.getElementById('btn-tab-logs'));
+});
+
+function parseMathExpr(str){
+    if(!str || !str.trim()) return NaN;
+    const cleaned = str.replace(/,/g, '.').replace(/[^0-9.+\-]/g, '');
+    if(!cleaned) return NaN;
+    try {
+        const parts = cleaned.match(/[+\-]?[0-9.]+/g);
+        if(!parts) return NaN;
+        return parts.reduce((acc, v) => acc + (parseFloat(v) || 0), 0);
+    } catch(e) { return NaN; }
+}
+
+function applyTare(tareGrams){
+    if(!lastFocusedInput) return alert('Сначала кликните в ячейку с весом продукта!');
+    const cur = parseMathExpr(lastFocusedInput.value);
+    if(isNaN(cur)) return alert('Сначала введите вес брутто с весов в ячейку!');
+    const net = Math.max(0, cur - tareGrams);
+    lastFocusedInput.value = net;
+    const id = parseInt(lastFocusedInput.id.replace('inp-', ''));
+    evalAndCalc(id, lastFocusedInput);
+    lastFocusedInput.focus();
+}
+
+function finalizeExpr(id, inp){
+    const val = parseMathExpr(inp.value);
+    if(!isNaN(val)) inp.value = Math.round(val * 1000) / 1000;
+    evalAndCalc(id, inp);
+}
+
+function evalAndCalc(id, inp){
+    const sysEl = document.getElementById('sys-'+id);
+    const stock = parseFloat(sysEl.dataset.stock) || 0;
+    const cost = parseFloat(sysEl.dataset.cost) || 0;
+    const diffEl = document.getElementById('diff-'+id);
+    const rubEl = document.getElementById('rub-'+id);
+    const val = parseMathExpr(inp.value);
+    if(isNaN(val)){
+        diffEl.innerText='0'; rubEl.innerText='0 ₽'; rubEl.dataset.rub='0';
+        diffEl.style.color='var(--text-muted)'; rubEl.style.color='var(--text-muted)';
+        updateInvSummary(); return;
+    }
+    const diff = val - stock;
+    const rub = diff * cost;
+    rubEl.dataset.rub = rub;
+    diffEl.innerText = (diff > 0 ? '+' : '') + diff.toFixed(2);
+    rubEl.innerText = (rub > 0 ? '+' : '') + rub.toFixed(1) + ' ₽';
+    const color = diff < -0.001 ? '#ef4444' : (diff > 0.001 ? '#10b981' : 'var(--text-muted)');
+    diffEl.style.color = color; rubEl.style.color = color;
+    updateInvSummary();
+}
+
+function updateInvSummary(){
+    let plus = 0, minus = 0;
+    document.querySelectorAll('.rub-cell').forEach(el => {
+        const r = parseFloat(el.dataset.rub) || 0;
+        if(r > 0) plus += r;
+        if(r < 0) minus += r;
+    });
+    const net = plus + minus;
+    document.getElementById('inv-plus').innerText = '+' + plus.toFixed(1) + ' ₽';
+    document.getElementById('inv-minus').innerText = minus.toFixed(1) + ' ₽';
+    const netEl = document.getElementById('inv-net');
+    netEl.innerText = (net > 0 ? '+' : '') + net.toFixed(1) + ' ₽';
+    netEl.style.color = net < 0 ? '#ef4444' : '#10b981';
+}
+</script></body></html>

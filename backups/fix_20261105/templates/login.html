@@ -1,0 +1,292 @@
+<!DOCTYPE html>
+<html lang="ru">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Вход по ПИН-коду — КРЕВЕТКА IS</title>
+<style>
+@import url('https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700;800&family=JetBrains+Mono:wght@600;700;800&display=swap');
+* { box-sizing: border-box; user-select: none; }
+body {
+    margin: 0;
+    min-height: 100vh;
+    background:
+        radial-gradient(900px 420px at 50% -10%, rgba(255,105,0,0.13), transparent 62%),
+        radial-gradient(700px 400px at 100% 100%, rgba(255,105,0,0.05), transparent 60%),
+        #09090b;
+    color: #fafafa;
+    font-family: 'Inter', -apple-system, sans-serif;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    padding: 20px;
+}
+.pin-terminal {
+    width: 392px;
+    max-width: 100%;
+    background: #121215;
+    border: 1px solid #2c2c30;
+    border-radius: 14px;
+    padding: 26px 24px 20px;
+    box-shadow: 0 30px 80px rgba(0,0,0,0.55), 0 0 0 1px rgba(255,255,255,0.02) inset;
+}
+.brand-head {
+    text-align: center;
+    margin-bottom: 18px;
+}
+.brand-mark {
+    width: 48px;
+    height: 48px;
+    margin: 0 auto 10px;
+    border-radius: 14px;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    font-size: 24px;
+    background: linear-gradient(145deg, #ff8a2a, #ff4d00);
+    box-shadow: 0 10px 24px rgba(255,105,0,0.3);
+}
+.brand-badge {
+    display: inline-block;
+    background: #ff6900;
+    color: #fff;
+    font-size: 11px;
+    font-weight: 800;
+    padding: 3px 8px;
+    border-radius: 4px;
+    letter-spacing: 0.06em;
+    margin-bottom: 8px;
+}
+.brand-head h1 {
+    margin: 0;
+    font-size: 20px;
+    font-weight: 800;
+    letter-spacing: 0.02em;
+    text-transform: uppercase;
+}
+.brand-head p {
+    margin: 6px 0 0;
+    font-size: 12px;
+    color: #a1a1aa;
+}
+.pin-display {
+    background: #09090b;
+    border: 1px solid #27272a;
+    border-radius: 8px;
+    height: 58px;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    gap: 12px;
+    margin-bottom: 14px;
+    font-family: 'JetBrains Mono', monospace;
+    font-size: 28px;
+    font-weight: 800;
+    letter-spacing: 8px;
+    color: #ff6900;
+}
+.pin-display.error {
+    border-color: #dc2626;
+    color: #dc2626;
+}
+.error-msg {
+    text-align: center;
+    color: #ef4444;
+    font-size: 12px;
+    font-weight: 600;
+    min-height: 18px;
+    margin-bottom: 10px;
+}
+.numpad {
+    display: grid;
+    grid-template-columns: repeat(3, 1fr);
+    gap: 10px;
+    margin-bottom: 14px;
+}
+.num-btn {
+    height: 58px;
+    background: #18181b;
+    border: 1px solid #27272a;
+    border-radius: 8px;
+    color: #fafafa;
+    font-family: 'JetBrains Mono', monospace;
+    font-size: 20px;
+    font-weight: 700;
+    cursor: pointer;
+    transition: background 0.12s, border-color 0.12s;
+}
+.num-btn:hover {
+    background: #27272a;
+    border-color: #52525b;
+}
+.num-btn:active {
+    background: #ff6900;
+    border-color: #ff6900;
+}
+.num-btn.func {
+    font-family: 'Inter', sans-serif;
+    font-size: 13px;
+    color: #a1a1aa;
+}
+.submit-btn {
+    width: 100%;
+    height: 50px;
+    background: #ff6900;
+    border: 1px solid #ff6900;
+    border-radius: 8px;
+    color: #fff;
+    font-size: 14px;
+    font-weight: 700;
+    text-transform: uppercase;
+    letter-spacing: 0.04em;
+    cursor: pointer;
+}
+.submit-btn:hover { background: #e05c00; border-color: #e05c00; }
+.login-hint {
+    margin: 10px 0 0;
+    text-align: center;
+    color: #71717a;
+    font-size: 11px;
+    line-height: 1.45;
+}
+.submit-btn:disabled {
+    opacity: 0.4;
+    cursor: not-allowed;
+}
+.footer-links {
+    margin-top: 16px;
+    padding-top: 12px;
+    border-top: 1px solid #27272a;
+    display: flex;
+    justify-content: space-between;
+    font-size: 12px;
+}
+.footer-links a {
+    color: #a1a1aa;
+    text-decoration: none;
+}
+.footer-links a:hover { color: #fafafa; }
+.login-clock {
+    color: #71717a;
+    font-family: 'JetBrains Mono', monospace;
+    font-size: 11px;
+    font-weight: 600;
+    letter-spacing: 0.02em;
+}
+</style>
+</head>
+<body>
+
+<div class="pin-terminal">
+    <div class="brand-head">
+        <div class="brand-mark" aria-hidden="true">🍣</div>
+        <span class="brand-badge">КРЕВЕТКА IS • ERP</span>
+        <h1>Терминал доступа</h1>
+        <p>Введите персональный ПИН-код (4–6 цифр)</p>
+    </div>
+
+    <form method="post" action="/login" id="pinForm" onsubmit="return validatePinSubmit()">
+        <input type="hidden" name="pin_code" id="pinInput" value="">
+        <div class="pin-display" id="pinDisplay">••••</div>
+        <div class="error-msg" id="errorMsg">{{ error or '' }}</div>
+
+        <div class="numpad">
+            <button type="button" class="num-btn" onclick="pressDigit('1')">1</button>
+            <button type="button" class="num-btn" onclick="pressDigit('2')">2</button>
+            <button type="button" class="num-btn" onclick="pressDigit('3')">3</button>
+            <button type="button" class="num-btn" onclick="pressDigit('4')">4</button>
+            <button type="button" class="num-btn" onclick="pressDigit('5')">5</button>
+            <button type="button" class="num-btn" onclick="pressDigit('6')">6</button>
+            <button type="button" class="num-btn" onclick="pressDigit('7')">7</button>
+            <button type="button" class="num-btn" onclick="pressDigit('8')">8</button>
+            <button type="button" class="num-btn" onclick="pressDigit('9')">9</button>
+            <button type="button" class="num-btn func" onclick="clearPin()">Сброс</button>
+            <button type="button" class="num-btn" onclick="pressDigit('0')">0</button>
+            <button type="button" class="num-btn func" onclick="backspacePin()">⌫ Стереть</button>
+        </div>
+
+        <button type="submit" class="submit-btn" id="submitBtn" disabled>Войти в систему (Enter)</button>
+        <p class="login-hint">Нет доступа? Обратитесь к администратору точки.</p>
+    </form>
+
+    <div class="footer-links">
+        <a href="/site">Витрина клиента ↗</a>
+        <span class="login-clock" id="loginClock">--:--</span>
+    </div>
+</div>
+
+<script>
+let currentPin = "";
+
+function updateDisplay() {
+    const disp = document.getElementById('pinDisplay');
+    const inp = document.getElementById('pinInput');
+    const btn = document.getElementById('submitBtn');
+    disp.classList.remove('error');
+
+    inp.value = currentPin;
+    if (currentPin.length === 0) {
+        disp.innerText = "••••";
+        disp.style.color = "#52525b";
+    } else {
+        disp.innerText = "●".repeat(currentPin.length);
+        disp.style.color = "#ff6900";
+    }
+    btn.disabled = (currentPin.length < 4 || currentPin.length > 6);
+}
+
+function pressDigit(d) {
+    if (currentPin.length < 6) {
+        currentPin += d;
+        document.getElementById('errorMsg').innerText = "";
+        updateDisplay();
+    }
+}
+
+function backspacePin() {
+    if (currentPin.length > 0) {
+        currentPin = currentPin.slice(0, -1);
+        updateDisplay();
+    }
+}
+
+function clearPin() {
+    currentPin = "";
+    updateDisplay();
+}
+
+function validatePinSubmit() {
+    return currentPin.length >= 4 && currentPin.length <= 6;
+}
+
+document.addEventListener('keydown', function(e) {
+    if (e.key >= '0' && e.key <= '9') {
+        e.preventDefault();
+        pressDigit(e.key);
+    } else if (e.key === 'Backspace') {
+        e.preventDefault();
+        backspacePin();
+    } else if (e.key === 'Escape') {
+        e.preventDefault();
+        clearPin();
+    } else if (e.key === 'Enter') {
+        if (currentPin.length >= 4 && currentPin.length <= 6) {
+            document.getElementById('pinForm').submit();
+        }
+    }
+});
+
+updateDisplay();
+
+function tickClock() {
+    const el = document.getElementById('loginClock');
+    if (!el) return;
+    const now = new Date();
+    el.innerText = now.toLocaleDateString('ru-RU', { day: '2-digit', month: '2-digit' }) + ' · ' +
+                   now.toLocaleTimeString('ru-RU', { hour: '2-digit', minute: '2-digit' });
+}
+tickClock();
+setInterval(tickClock, 30000);
+</script>
+</body>
+</html>

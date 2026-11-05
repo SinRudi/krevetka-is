@@ -1,0 +1,47 @@
+ * Tip: There are .env files present. Install python-dotenv to use them.
+ * Serving Flask app 'app'
+ * Debug mode: off
+[31m[1mWARNING: This is a development server. Do not use it in a production deployment. Use a production WSGI server instead.[0m
+ * Running on all addresses (0.0.0.0)
+ * Running on http://127.0.0.1:5000
+ * Running on http://192.168.0.73:5000
+[33mPress CTRL+C to quit[0m
+127.0.0.1 - - [05/Nov/2026 22:06:25] "[31m[1mGET /api/omega/dashboard HTTP/1.1[0m" 401 -
+127.0.0.1 - - [05/Nov/2026 22:06:29] "GET /api/ultra/kds_batch HTTP/1.1" 200 -
+127.0.0.1 - - [05/Nov/2026 22:06:39] "GET /api/ultra/kds_batch HTTP/1.1" 200 -
+127.0.0.1 - - [05/Nov/2026 22:06:49] "GET /api/ultra/kds_batch HTTP/1.1" 200 -
+127.0.0.1 - - [05/Nov/2026 22:06:59] "GET /api/ultra/kds_batch HTTP/1.1" 200 -
+127.0.0.1 - - [05/Nov/2026 22:07:09] "GET /api/ultra/kds_batch HTTP/1.1" 200 -
+127.0.0.1 - - [05/Nov/2026 22:07:19] "GET /api/ultra/kds_batch HTTP/1.1" 200 -
+127.0.0.1 - - [05/Nov/2026 22:07:29] "GET /api/ultra/kds_batch HTTP/1.1" 200 -
+127.0.0.1 - - [05/Nov/2026 22:07:39] "GET /api/ultra/kds_batch HTTP/1.1" 200 -
+127.0.0.1 - - [05/Nov/2026 22:07:49] "GET /api/ultra/kds_batch HTTP/1.1" 200 -
+127.0.0.1 - - [05/Nov/2026 22:07:59] "GET /api/ultra/kds_batch HTTP/1.1" 200 -
+127.0.0.1 - - [05/Nov/2026 22:08:09] "GET /api/ultra/kds_batch HTTP/1.1" 200 -
+127.0.0.1 - - [05/Nov/2026 22:08:19] "GET /api/ultra/kds_batch HTTP/1.1" 200 -
+127.0.0.1 - - [05/Nov/2026 22:08:29] "GET /api/ultra/kds_batch HTTP/1.1" 200 -
+127.0.0.1 - - [05/Nov/2026 22:08:39] "GET /api/ultra/kds_batch HTTP/1.1" 200 -
+127.0.0.1 - - [05/Nov/2026 22:08:49] "GET /api/ultra/kds_batch HTTP/1.1" 200 -
+127.0.0.1 - - [05/Nov/2026 22:08:55] "[32mGET / HTTP/1.1[0m" 302 -
+127.0.0.1 - - [05/Nov/2026 22:08:56] "GET /login HTTP/1.1" 200 -
+127.0.0.1 - - [05/Nov/2026 22:08:56] "GET /static/omega_erp_v12.js?v=1205 HTTP/1.1" 200 -
+127.0.0.1 - - [05/Nov/2026 22:08:56] "[32mGET /favicon.ico HTTP/1.1[0m" 302 -
+127.0.0.1 - - [05/Nov/2026 22:08:56] "GET /login HTTP/1.1" 200 -
+127.0.0.1 - - [05/Nov/2026 22:08:59] "GET /api/ultra/kds_batch HTTP/1.1" 200 -
+127.0.0.1 - - [05/Nov/2026 22:09:09] "GET /api/ultra/kds_batch HTTP/1.1" 200 -
+127.0.0.1 - - [05/Nov/2026 22:09:19] "GET /api/ultra/kds_batch HTTP/1.1" 200 -
+127.0.0.1 - - [05/Nov/2026 22:09:29] "GET /api/ultra/kds_batch HTTP/1.1" 200 -
+127.0.0.1 - - [05/Nov/2026 22:09:39] "GET /api/ultra/kds_batch HTTP/1.1" 200 -
+127.0.0.1 - - [05/Nov/2026 22:09:49] "GET /api/ultra/kds_batch HTTP/1.1" 200 -
+127.0.0.1 - - [05/Nov/2026 22:09:59] "GET /api/ultra/kds_batch HTTP/1.1" 200 -
+127.0.0.1 - - [05/Nov/2026 22:10:09] "GET /api/ultra/kds_batch HTTP/1.1" 200 -
+127.0.0.1 - - [05/Nov/2026 22:10:19] "GET /api/ultra/kds_batch HTTP/1.1" 200 -
+127.0.0.1 - - [05/Nov/2026 22:10:29] "GET /api/ultra/kds_batch HTTP/1.1" 200 -
+127.0.0.1 - - [05/Nov/2026 22:10:39] "GET /api/ultra/kds_batch HTTP/1.1" 200 -
+127.0.0.1 - - [05/Nov/2026 22:10:49] "GET /api/ultra/kds_batch HTTP/1.1" 200 -
+127.0.0.1 - - [05/Nov/2026 22:10:59] "GET /api/ultra/kds_batch HTTP/1.1" 200 -
+127.0.0.1 - - [05/Nov/2026 22:11:04] "GET /site HTTP/1.1" 200 -
+127.0.0.1 - - [05/Nov/2026 22:11:09] "GET /api/ultra/kds_batch HTTP/1.1" 200 -
+127.0.0.1 - - [05/Nov/2026 22:11:19] "GET /api/ultra/kds_batch HTTP/1.1" 200 -
+127.0.0.1 - - [05/Nov/2026 22:11:29] "GET /api/ultra/kds_batch HTTP/1.1" 200 -
+127.0.0.1 - - [05/Nov/2026 22:11:39] "GET /api/ultra/kds_batch HTTP/1.1" 200 -

@@ -1,0 +1,285 @@
+<!DOCTYPE html><html lang="ru"><head><meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Склад, П/Ф и Ревизия — КРЕВЕТКА IS</title>
+<style>
+body { margin:0; padding:16px 24px 40px; }
+
+/* ---------- Шапка ---------- */
+.wh-head { margin-bottom:16px !important; }
+.wh-head-titles h1 { margin:0; font-size:18px !important; font-weight:800; letter-spacing:-0.01em; text-transform:uppercase; }
+.wh-head-titles small { display:block; margin-top:3px; color:#a1a1aa; font-size:11.5px; }
+.wh-stock-pill {
+    display:inline-flex; align-items:baseline; gap:7px; height:34px; padding:0 13px;
+    border-radius:999px; background:rgba(22,163,74,.1); border:1px solid rgba(22,163,74,.4);
+    color:#4ade80; font-size:11px; font-weight:700; text-transform:uppercase; letter-spacing:.05em;
+}
+.wh-stock-pill b { color:#4ade80; font-size:15px; letter-spacing:0; text-transform:none; }
+
+/* ---------- Сводка ---------- */
+.wh-stats { display:grid; grid-template-columns:repeat(auto-fit, minmax(180px, 1fr)); gap:12px; margin-bottom:16px; }
+.wh-stat { padding:14px 16px !important; position:relative; overflow:hidden; }
+.wh-stat::before { content:""; position:absolute; left:0; top:0; bottom:0; width:3px; background:#3f3f46; }
+.wh-stat.value::before { background:#16a34a; }
+.wh-stat.low::before { background:#dc2626; }
+.wh-stat.prep::before { background:#38bdf8; }
+.wh-stat h3 { margin:0 0 7px; color:#a1a1aa; font-size:10.5px; text-transform:uppercase; letter-spacing:.06em; font-weight:700; }
+.wh-stat p { margin:0; font-size:24px; font-weight:800; line-height:1; letter-spacing:-.02em; }
+.wh-stat small { display:block; margin-top:6px; color:#71717a; font-size:10.5px; }
+
+/* ---------- Раскладка ---------- */
+.wh-grid { display:grid; grid-template-columns:1.5fr 1fr; gap:16px; align-items:start; }
+@media(max-width:1080px){ .wh-grid { grid-template-columns:1fr; } }
+.panel { padding:16px 18px; margin-bottom:16px; }
+.panel-title {
+    display:flex; align-items:center; justify-content:space-between; gap:10px;
+    margin:0 0 12px; font-size:12.5px; font-weight:800; text-transform:uppercase; letter-spacing:.04em;
+}
+.panel-title span { font-size:10.5px; color:#71717a; font-weight:600; text-transform:none; letter-spacing:0; }
+.panel-title.accent { color:#ff6900; }
+.panel-title.green { color:#4ade80; }
+
+.form-row { display:flex; flex-wrap:wrap; gap:7px; align-items:center; }
+.form-row input, .form-row select { height:34px !important; font-size:12.5px !important; }
+.form-grid { display:grid; grid-template-columns:1fr 1fr; gap:7px; }
+@media (max-width:520px){ .form-grid { grid-template-columns:1fr; } }
+.field-label { display:block; margin:9px 0 4px; color:#a1a1aa; font-size:10.5px; font-weight:700; text-transform:uppercase; letter-spacing:.05em; }
+
+/* ---------- Таблица склада ---------- */
+.table-wrap { width:100%; overflow-x:auto; }
+.table-wrap table { min-width:680px; }
+td, th { vertical-align:middle; }
+.ing-name { font-weight:650; color:#fafafa; font-size:12.5px; white-space:nowrap; }
+.ing-sub { display:block; margin-top:2px; color:#71717a; font-size:10.5px; }
+.stock-val { font-weight:800; font-size:13px; font-variant-numeric:tabular-nums; white-space:nowrap; }
+.stock-ok { color:#4ade80; }
+.stock-low { color:#f87171; }
+.money { font-variant-numeric:tabular-nums; white-space:nowrap; }
+.money b { color:#ff6900; }
+.inv-input { width:82px; height:30px !important; padding:4px 6px !important; font-size:12px !important; }
+.img-badge {
+    display:inline-flex; align-items:center; padding:2px 6px; margin-left:5px;
+    border-radius:4px; background:rgba(56,189,248,.12); border:1px solid rgba(56,189,248,.45);
+    color:#7dd3fc; font-size:9.5px; font-weight:700; letter-spacing:.04em;
+}
+.low-badge {
+    display:inline-flex; align-items:center; margin-left:5px; padding:2px 6px;
+    border-radius:4px; background:rgba(220,38,38,.12); border:1px solid rgba(220,38,38,.5);
+    color:#f87171; font-size:9.5px; font-weight:700;
+}
+
+/* ---------- Подсказки ---------- */
+.hint-row { display:flex; gap:9px; padding:8px 0; border-bottom:1px solid #232326; }
+.hint-row:last-child { border-bottom:0; padding-bottom:0; }
+.hint-num {
+    flex:0 0 auto; width:20px; height:20px; border-radius:50%;
+    display:flex; align-items:center; justify-content:center;
+    background:rgba(255,105,0,.12); border:1px solid rgba(255,105,0,.45);
+    color:#ff8533; font-size:10px; font-weight:800;
+}
+.hint-row b { display:block; color:#e4e4e7; font-size:11.5px; font-weight:700; }
+.hint-row span { display:block; margin-top:2px; color:#71717a; font-size:10.5px; line-height:1.4; }
+
+/* ---------- Журнал ---------- */
+.log-scroll { max-height:340px; overflow-y:auto; border:1px solid #27272a; border-radius:8px; }
+.log-scroll table { min-width:0; }
+.log-scroll th { position:sticky; top:0; z-index:2; }
+.log-scroll td { padding:7px 9px !important; font-size:11.5px; }
+.log-time { color:#71717a; font-size:10.5px; white-space:nowrap; font-variant-numeric:tabular-nums; }
+.log-plus { color:#4ade80; font-weight:800; white-space:nowrap; }
+.log-minus { color:#f87171; font-weight:800; white-space:nowrap; }
+.log-empty { padding:24px 12px; text-align:center; color:#71717a; font-size:12px; }
+
+/* ---------- Мобильная адаптация ---------- */
+@media (max-width:760px) {
+    body { padding:12px 12px 32px; }
+    .wh-head-titles h1 { font-size:16px !important; }
+    .wh-stat p { font-size:21px; }
+    .wh-stock-pill { display:none; }
+}
+</style></head><body>
+
+{% set summary = namespace(value=0, low=0, prep=0) %}
+{% for i in ingredients %}
+    {% set summary.value = summary.value + ((i.stock or 0) * (i.cost_price or 0)) %}
+    {% if (i.stock or 0) <= 100 %}{% set summary.low = summary.low + 1 %}{% endif %}
+    {% if i.is_prep %}{% set summary.prep = summary.prep + 1 %}{% endif %}
+{% endfor %}
+
+<div class="page-nav-header wh-head">
+    <div class="page-nav-left">
+        <a href="/admin" class="btn-back-nav">← В управление</a>
+        <a href="/" class="btn-back-nav">← В кассу</a>
+        <div class="wh-head-titles">
+            <h1>Складской учёт и инвентаризация</h1>
+            <small>Остатки сырья, полуфабрикаты, акты проработки и журнал движений</small>
+        </div>
+    </div>
+    <div class="page-nav-right">
+        <span class="wh-stock-pill">Запасы на складе <b>{{ summary.value|round(0)|int }} ₽</b></span>
+    </div>
+</div>
+
+<div class="wh-stats">
+    <div class="wh-stat">
+        <h3>Позиций на складе</h3>
+        <p>{{ ingredients|length }}</p>
+        <small>сырьё и полуфабрикаты</small>
+    </div>
+    <div class="wh-stat value">
+        <h3>Стоимость запасов</h3>
+        <p style="color:#4ade80;">{{ summary.value|round(0)|int }} ₽</p>
+        <small>по себестоимости</small>
+    </div>
+    <div class="wh-stat low">
+        <h3>Ниже минимума</h3>
+        <p style="color:{% if summary.low > 0 %}#f87171{% else %}#fafafa{% endif %};">{{ summary.low }}</p>
+        <small>остаток ≤ 100 единиц</small>
+    </div>
+    <div class="wh-stat prep">
+        <h3>Полуфабрикаты</h3>
+        <p>{{ summary.prep }}</p>
+        <small>готовые П/Ф на складе</small>
+    </div>
+</div>
+
+<div class="wh-grid">
+    <div>
+        <div class="card-panel panel">
+            <h3 class="panel-title">Добавить сырьё или П/Ф <span>Новая позиция появится в таблице ниже</span></h3>
+            <form method="post" action="/admin/ingredient/add" class="form-row">
+                <input name="name" placeholder="Наименование (Лосось / Рис)" required style="flex:1; min-width:170px;">
+                <input name="stock" type="number" step="0.01" placeholder="Нач. остаток" required style="width:110px;">
+                <select name="unit" style="width:72px;"><option value="г">г</option><option value="кг">кг</option><option value="шт">шт</option></select>
+                <input name="cost_price" type="number" step="0.01" placeholder="Себест. ед. (₽)" style="width:130px;">
+                <select name="is_prep" style="width:140px;"><option value="0">Сырьё</option><option value="1">Заготовка П/Ф</option></select>
+                <button type="submit" class="btn" style="padding:8px 16px; cursor:pointer;">+ Добавить</button>
+            </form>
+        </div>
+
+        <div class="card-panel panel">
+            <h3 class="panel-title">Остатки и быстрая ревизия <span>{{ ingredients|length }} позиций</span></h3>
+            <div class="table-wrap">
+                <table>
+                    <tr>
+                        <th>Наименование</th>
+                        <th>Остаток</th>
+                        <th>Себест. ед.</th>
+                        <th>Сумма</th>
+                        <th>Факт по ревизии</th>
+                        <th></th>
+                    </tr>
+                    {% for i in ingredients %}
+                    <tr>
+                        <td>
+                            <span class="ing-name">{{ i.name }}</span>
+                            {% if i.is_prep %}<span class="img-badge">П/Ф</span>{% endif %}
+                            <span class="ing-sub">{{ i.unit }}{% if i.is_prep %} · заготовка{% else %} · сырьё{% endif %}</span>
+                        </td>
+                        <td>
+                            <span class="stock-val {% if (i.stock or 0) <= 100 %}stock-low{% else %}stock-ok{% endif %}">{{ i.stock|round(1) }} {{ i.unit }}</span>
+                            {% if (i.stock or 0) <= 100 %}<span class="low-badge">МАЛО</span>{% endif %}
+                        </td>
+                        <td class="money">{{ (i.cost_price or 0)|round(2) }} ₽</td>
+                        <td class="money"><b>{{ ((i.stock or 0) * (i.cost_price or 0))|round(0)|int }} ₽</b></td>
+                        <td>
+                            <form method="post" action="/admin/ingredient/inventory_check" class="form-row" style="flex-wrap:nowrap; gap:5px;">
+                                <input type="hidden" name="ingredient_id" value="{{ i.id }}">
+                                <input class="inv-input" type="number" step="0.1" name="actual_stock" value="{{ i.stock|round(1) }}">
+                                <button type="submit" class="quick-chip" style="padding:5px 9px;">Сверить</button>
+                            </form>
+                        </td>
+                        <td>
+                            <form method="post" action="/admin/ingredient/delete/{{ i.id }}" style="display:inline;" onsubmit="return confirm('Удалить позицию со склада?');">
+                                <button type="submit" class="btn btn-danger" style="padding:5px 9px; font-size:11px;">Удалить</button>
+                            </form>
+                        </td>
+                    </tr>
+                    {% else %}
+                    <tr><td colspan="6" class="log-empty">На складе пока нет позиций. Добавьте сырьё в форме выше.</td></tr>
+                    {% endfor %}
+                </table>
+            </div>
+        </div>
+    </div>
+
+    <div>
+        <div class="card-panel panel">
+            <h3 class="panel-title accent">Акт проработки <span>Производство П/Ф из сырья</span></h3>
+            <form method="post" action="/admin/ingredient/produce_prep">
+                <span class="field-label">Списать сырьё</span>
+                <div class="form-row" style="flex-wrap:nowrap;">
+                    <select name="raw_id" required style="flex:1;">
+                        <option value="">Выберите сырьё...</option>
+                        {% for i in ingredients %}{% if not i.is_prep %}<option value="{{ i.id }}">{{ i.name }} ({{ i.stock|round(0) }} {{ i.unit }})</option>{% endif %}{% endfor %}
+                    </select>
+                    <input name="raw_amount" type="number" step="1" placeholder="Расход (г)" required style="width:115px;">
+                </div>
+                <span class="field-label">Оприходовать П/Ф</span>
+                <div class="form-row" style="flex-wrap:nowrap;">
+                    <select name="prep_id" required style="flex:1;">
+                        <option value="">Выберите П/Ф...</option>
+                        {% for i in ingredients %}{% if i.is_prep %}<option value="{{ i.id }}">{{ i.name }} ({{ i.stock|round(0) }} {{ i.unit }})</option>{% endif %}{% endfor %}
+                    </select>
+                    <input name="prep_amount" type="number" step="1" placeholder="Выход (г)" required style="width:115px;">
+                </div>
+                <button type="submit" class="btn" style="width:100%; margin-top:12px; padding:10px; cursor:pointer;">Провести акт проработки</button>
+            </form>
+        </div>
+
+        <div class="card-panel panel">
+            <h3 class="panel-title green">Приход / списание <span>Накладные и акты</span></h3>
+            <form method="post" action="/admin/ingredient/adjust">
+                <span class="field-label">Позиция склада</span>
+                <select name="ingredient_id" required style="width:100%;">
+                    {% for i in ingredients %}<option value="{{ i.id }}">{{ i.name }} — остаток {{ i.stock|round(1) }} {{ i.unit }}</option>{% endfor %}
+                </select>
+                <span class="field-label">Операция и количество</span>
+                <div class="form-grid">
+                    <select name="op_type"><option value="приход">Приход сырья</option><option value="списание">Списание (брак)</option></select>
+                    <input name="amount" type="number" step="0.01" placeholder="Количество" required>
+                </div>
+                <span class="field-label">Основание</span>
+                <input name="reason" placeholder="Например, накладная №14" value="Поставка сырья" style="width:100%;">
+                <button type="submit" class="btn btn-ready" style="width:100%; margin-top:12px; padding:10px; cursor:pointer;">Провести операцию</button>
+            </form>
+        </div>
+
+        <div class="card-panel panel">
+            <h3 class="panel-title">Как вести учёт <span>коротко</span></h3>
+            <div class="hint-row">
+                <span class="hint-num">1</span>
+                <div><b>Приход</b><span>Внесите поставку через «Приход / списание» — остаток увеличится, движение попадёт в журнал.</span></div>
+            </div>
+            <div class="hint-row">
+                <span class="hint-num">2</span>
+                <div><b>Списание</b><span>Выберите операцию «Списание (брак)» и укажите количество — остаток уменьшится.</span></div>
+            </div>
+            <div class="hint-row">
+                <span class="hint-num">3</span>
+                <div><b>Ревизия</b><span>Введите фактический остаток в таблице и нажмите «Сверить», чтобы система записала расхождение.</span></div>
+            </div>
+        </div>
+
+    </div>
+</div>
+
+<div class="card-panel panel" style="margin-top:0;">
+    <h3 class="panel-title">Журнал складских движений <span>Последние 30 операций</span></h3>
+    <div class="log-scroll">
+        <table>
+            <tr><th>Время</th><th>Позиция</th><th>Причина</th><th>Тип</th><th style="text-align:right;">Изменение</th></tr>
+            {% for l in logs %}
+            <tr>
+                <td class="log-time">{{ l.created_at }}</td>
+                <td><b style="font-size:11.5px; color:#fafafa;">{{ l.ing_name }}</b></td>
+                <td style="color:#a1a1aa; font-size:11px;">{{ l.reason }}</td>
+                <td><span class="roll-8-badge" style="font-size:9.5px; padding:2px 6px;">{{ l.op_type }}</span></td>
+                <td style="text-align:right;" class="{% if l.change_amount > 0 %}log-plus{% else %}log-minus{% endif %}">{% if l.change_amount > 0 %}+{% endif %}{{ l.change_amount|round(1) }}</td>
+            </tr>
+            {% else %}
+            <tr><td colspan="5" class="log-empty">Движений пока нет — они появятся после первой складской операции.</td></tr>
+            {% endfor %}
+        </table>
+    </div>
+</div>
+</body></html>

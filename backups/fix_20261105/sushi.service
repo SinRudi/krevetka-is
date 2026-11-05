@@ -1,0 +1,15 @@
+[Unit]
+Description=Sushi POS Production Server (Waitress WSGI)
+After=network.target
+
+[Service]
+Type=simple
+WorkingDirectory=%h/my-apps/sushi_pos
+ExecStart=%h/my-apps/venv/bin/python3 %h/my-apps/sushi_pos/app.py
+Restart=always
+RestartSec=3
+StandardOutput=journal
+StandardError=journal
+
+[Install]
+WantedBy=default.target

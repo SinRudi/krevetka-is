@@ -1,0 +1,270 @@
+<!DOCTYPE html><html lang="ru"><head><meta charset="UTF-8"><meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Экран Кухни KDS — КРЕВЕТКА IS</title>
+<style>
+body { margin:0; padding:16px 20px 28px; }
+
+/* ---------- Шапка ---------- */
+.page-nav-header { margin-bottom:12px !important; }
+.kds-title { display:flex; align-items:center; gap:9px; flex-wrap:wrap; }
+.kds-title h1 { margin:0; font-size:18px !important; font-weight:800; letter-spacing:-0.01em; text-transform:uppercase; }
+.kds-live-dot {
+    width:8px; height:8px; border-radius:50%; background:#16a34a;
+    box-shadow:0 0 0 4px rgba(22,163,74,0.14); animation:kdsPulse 2.4s ease-in-out infinite;
+}
+@keyframes kdsPulse { 0%,100% { opacity:1 } 50% { opacity:.45 } }
+
+.kds-toolbar {
+    display:flex; align-items:center; justify-content:space-between; gap:12px;
+    margin-bottom:12px; flex-wrap:wrap;
+}
+.station-seg {
+    display:inline-flex; gap:3px; padding:3px; border-radius:9px;
+    background:#101013; border:1px solid #27272a;
+}
+.station-btn {
+    height:32px; padding:0 14px; border:0; border-radius:6px; cursor:pointer;
+    background:transparent; color:#a1a1aa; font-size:12.5px; font-weight:650;
+    transition:background .14s ease, color .14s ease;
+}
+.station-btn:hover { color:#fafafa; background:#18181b; }
+.station-btn.active { background:#ff6900; color:#fff; }
+.kds-hint { color:#71717a; font-size:11.5px; }
+
+/* ---------- Сводка заготовок ---------- */
+.summary-strip {
+    background:#101013; border:1px solid #27272a;
+    border-radius:10px; padding:11px 14px; margin-bottom:14px;
+    display:flex; align-items:center; gap:8px; flex-wrap:wrap;
+}
+.summary-pill {
+    background:#18181b; border:1px solid #27272a;
+    padding:5px 11px; border-radius:999px; font-size:12.5px; font-weight:600;
+    display:flex; align-items:center; gap:7px;
+}
+.summary-label { font-weight:700; color:#a1a1aa; font-size:11px; text-transform:uppercase; letter-spacing:.05em; }
+
+/* ---------- Сетка заказов ---------- */
+.orders-grid { display:grid; grid-template-columns:repeat(auto-fill, minmax(340px, 1fr)); gap:14px; align-items:start; }
+.order-card {
+    padding:15px 16px; display:flex; flex-direction:column; justify-content:space-between;
+    border-top:3px solid #27272a !important; border-radius:10px !important;
+    background:#121215 !important;
+}
+.order-card.new { border-top-color:#eab308 !important; }
+.order-card.cooking { border-top-color:#ff6900 !important; }
+.kds-item {
+    padding:8px 10px; margin-bottom:5px; border-radius:6px;
+    background:#0d0d10; border:1px solid #27272a;
+    display:flex; justify-content:space-between; align-items:center;
+    font-size:13.5px; font-weight:600; cursor:pointer; user-select:none;
+    transition:opacity .12s ease, border-color .12s ease;
+}
+.kds-item:hover { border-color:#3f3f46; }
+.kds-item.checked { opacity:0.38; text-decoration:line-through; border-color:#16a34a; }
+.kds-item.hot { border-left:3px solid #dc2626; }
+.kds-item.cold { border-left:3px solid #2563eb; }
+.timer {
+    font-family:'JetBrains Mono', monospace; font-size:15px; font-weight:700;
+    color:#16a34a; background:#0d0d10; border:1px solid #27272a;
+    padding:4px 10px; border-radius:6px; font-variant-numeric:tabular-nums;
+}
+.timer.warn { color:#eab308; border-color:#eab308; }
+.timer.late { color:#dc2626; border-color:#dc2626; animation:kdsPulse 1.4s ease-in-out infinite; }
+
+.kds-empty {
+    grid-column:1/-1; display:flex; flex-direction:column; align-items:center; justify-content:center;
+    gap:8px; padding:70px 20px; color:#71717a; text-align:center;
+}
+.kds-empty .ico {
+    width:74px; height:74px; border-radius:22px; background:#101013; border:1px solid #27272a;
+    display:flex; align-items:center; justify-content:center; font-size:32px; margin-bottom:6px;
+}
+.kds-empty b { color:#d4d4d8; font-size:17px; font-weight:700; }
+.kds-empty span { font-size:12.5px; max-width:340px; line-height:1.55; }
+
+#soundBtn.on { background:#16a34a !important; border-color:#16a34a !important; }
+</style></head><body>
+
+<div class="page-nav-header">
+    <div class="page-nav-left">
+        <a href="/" class="btn-back-nav">← Касса</a>
+        <div class="kds-title">
+            <span class="kds-live-dot"></span>
+            <h1>Терминал кухни KDS</h1>
+            <span class="roll-8-badge">Стандарт нарезки: 8 шт.</span>
+        </div>
+    </div>
+    <div class="page-nav-right">
+        <button class="quick-chip" onclick="recallLastReady()">↩ Вернуть последний заказ</button>
+        <button id="soundBtn" class="quick-chip" onclick="enableSound()" style="padding:6px 13px; font-size:12px;">🔔 Голосовое оповещение</button>
+    </div>
+</div>
+
+<div class="kds-toolbar">
+    <div class="station-seg">
+        <button class="station-btn active" onclick="setStation('all', this)">Все цеха</button>
+        <button class="station-btn" onclick="setStation('cold', this)">❄️ Холодный цех</button>
+        <button class="station-btn" onclick="setStation('hot', this)">🔥 Горячий цех</button>
+    </div>
+    <div class="kds-hint">Нажмите на позицию в заказе, чтобы отметить её как готовую</div>
+</div>
+
+<div class="summary-strip" id="prep-summary">
+    <span style="font-weight:700; color:#a1a1aa; font-size:12px; text-transform:uppercase;">Сводка заготовок в работе:</span>
+    <span style="color:#71717a; font-size:12px;">Загрузка...</span>
+</div>
+
+<div class="orders-grid" id="orders-container"></div>
+
+<script>
+let lastJson = "";
+let soundEnabled = false;
+let lastOrdersCount = 0;
+let currentStation = 'all';
+let checkedMap = {};
+
+function setStation(st, btn){
+    currentStation = st;
+    lastJson = "";
+    document.querySelectorAll('.station-btn').forEach(b => b.classList.remove('active'));
+    if(btn) btn.classList.add('active');
+    fetchOrders();
+}
+function enableSound(){
+    soundEnabled = true;
+    const b = document.getElementById('soundBtn');
+    b.innerText = '🔔 Оповещение включено';
+    b.classList.add('on');
+    speak("Оповещение кухни активировано");
+}
+function speak(text){
+    if(!soundEnabled || !('speechSynthesis' in window)) return;
+    const ut = new SpeechSynthesisUtterance(text); ut.lang = 'ru-RU'; window.speechSynthesis.speak(ut);
+}
+function toggleCheckItem(orderId, idx, el){
+    const key = `${orderId}_${idx}`; checkedMap[key] = !checkedMap[key];
+    el.classList.toggle('checked', checkedMap[key]);
+}
+function recallLastReady(){
+    fetch('/api/kds/recall_last', {method:'POST'}).then(r=>r.json()).then(d=>{
+        if(d.success) { lastJson=""; fetchOrders(); }
+        else alert(d.error || 'Нет недавно закрытых заказов');
+    });
+}
+function fetchOrders(){
+    fetch('/api/orders?status=active').then(r=>r.json()).then(orders=>{
+        renderSummary(orders);
+        const currentJson = JSON.stringify(orders) + currentStation;
+        if(currentJson !== lastJson){
+            lastJson = currentJson;
+            render(orders);
+            const newOrders = orders.filter(o => o.status === 'new').length;
+            if(newOrders > lastOrdersCount && orders.length > 0){
+                const lastOrder = orders.filter(o => o.status === 'new').pop();
+                if(lastOrder) speak(`Новый заказ номер ${lastOrder.id}`);
+            }
+            lastOrdersCount = newOrders;
+        }
+    });
+}
+function renderSummary(orders){
+    const strip = document.getElementById('prep-summary');
+    const counts = {};
+    orders.forEach(o => {
+        (o.items || []).forEach(i => {
+            const isExtra = i.name.includes('Васаби') || i.name.includes('Имбирь') || i.name.includes('Соус') || i.name.includes('Палочки');
+            if(!isExtra) counts[i.name] = (counts[i.name] || 0) + i.qty;
+        });
+    });
+    const entries = Object.entries(counts);
+    if(entries.length === 0){
+        strip.innerHTML = '<span class="summary-label">Сводка заготовок</span> <span style="color:#71717a; font-size:12px;">Активных заказов в очереди нет</span>';
+        return;
+    }
+    strip.innerHTML = '<span class="summary-label">Сводка на скрутку</span>' +
+        entries.map(([name, qty]) => `<div class="summary-pill"><span>${name}:</span> <b style="color:#ff6900;">${qty} порц.</b> <span class="roll-8-badge">${qty * 8} шт.</span></div>`).join('');
+}
+function render(orders){
+    const c = document.getElementById('orders-container'); c.innerHTML = '';
+    if(orders.length === 0){
+        c.innerHTML = `<div class="kds-empty">
+            <div class="ico">🍣</div>
+            <b>Очередь пуста</b>
+            <span>Новые заказы появятся здесь автоматически. Экран обновляется каждые 2,5 секунды.</span>
+        </div>`;
+        return;
+    }
+    orders.forEach(o => {
+        const filteredItems = (o.items || []).filter(i => {
+            const isHot = i.name.includes('Вок') || i.name.includes('суп') || i.name.includes('Кранч') || i.name.includes('Запеч');
+            if(currentStation === 'hot') return isHot;
+            if(currentStation === 'cold') return !isHot;
+            return true;
+        });
+        if(filteredItems.length === 0) return;
+
+        const card = document.createElement('div');
+        card.className = 'order-card ' + o.status;
+        const itemsHtml = filteredItems.map((i, idx) => {
+            const isHot = i.name.includes('Вок') || i.name.includes('суп') || i.name.includes('Кранч') || i.name.includes('Запеч');
+            const isExtra = i.name.includes('Васаби') || i.name.includes('Имбирь') || i.name.includes('Соус') || i.name.includes('Палочки');
+            const key = `${o.id}_${idx}`;
+            return `<div class="kds-item ${isHot?'hot':'cold'} ${checkedMap[key]?'checked':''}" onclick="toggleCheckItem(${o.id}, ${idx}, this)">
+                <div>
+                    <span>${i.name}</span>
+                    ${!isExtra ? '<span class="roll-8-badge" style="margin-left:6px;">8 шт.</span>' : ''}
+                    ${i.modifiers ? `<div style="font-size:11px; color:#eab308; margin-top:2px;">Мод: ${i.modifiers}</div>` : ''}
+                </div>
+                <span style="background:#27272a; color:#fafafa; padding:2px 8px; border-radius:4px; font-weight:700;">×${i.qty}</span>
+            </div>`;
+        }).join('');
+
+        let timerHtml = o.status === 'cooking' && o.cook_start_time
+            ? `<span class="timer" data-start="${o.cook_start_time}">00:00</span>`
+            : `<span class="roll-8-badge" style="color:#eab308; border-color:#eab308;">ОЖИДАЕТ • ${(o.created_at||'').slice(11,16)}</span>`;
+
+        let btnHtml = o.status === 'new'
+            ? `<button class="btn-cook" style="width:100%; padding:11px; font-size:13px; cursor:pointer; text-transform:uppercase;" onclick="setStatus(${o.id}, 'cooking')">Начать приготовление</button>`
+            : `<button class="btn-ready" style="width:100%; padding:11px; font-size:13px; cursor:pointer; border-radius:6px; font-weight:700; text-transform:uppercase;" onclick="setStatus(${o.id}, 'ready')">Заказ готов к выдаче</button>`;
+
+        card.innerHTML = `
+            <div>
+                <div style="display:flex; justify-content:space-between; align-items:center; border-bottom:1px solid var(--border); padding-bottom:10px; margin-bottom:10px;">
+                    <div>
+                        <span style="font-size:20px; font-weight:800; color:#fafafa;">#${o.id}</span>
+                        <span class="roll-8-badge" style="margin-left:6px;">${o.delivery_type === 'самовывоз' ? 'САМОВЫВОЗ' : 'ДОСТАВКА'}</span>
+                    </div>
+                    <div style="display:flex; gap:6px; align-items:center;">
+                        ${timerHtml}
+                        <a href="/ticket/${o.id}" target="_blank" class="quick-chip" style="padding:4px 8px;">Бегунок</a>
+                    </div>
+                </div>
+                ${o.comment ? `<div style="background:#121215; border:1px solid #3f3f46; color:#d4d4d8; padding:7px 10px; border-radius:6px; margin-bottom:10px; font-size:12px;">${o.comment}</div>` : ''}
+                <div style="margin-bottom:12px;">${itemsHtml}</div>
+            </div>
+            ${btnHtml}
+        `;
+        c.appendChild(card);
+    });
+    updateTimers();
+}
+function setStatus(id, status){
+    fetch('/api/set_status/' + id, {method:'POST', headers:{'Content-Type':'application/json'}, body:JSON.stringify({status})})
+    .then(()=>{ lastJson = ""; fetchOrders(); });
+}
+function updateTimers(){
+    document.querySelectorAll('.timer').forEach(el => {
+        const start = el.dataset.start; if(!start) return;
+        const startDate = new Date(start.replace(' ', 'T'));
+        let diff = Math.max(0, Math.floor((new Date() - startDate) / 1000));
+        const mins = Math.floor(diff / 60); const secs = diff % 60;
+        el.innerText = `${mins.toString().padStart(2,'0')}:${secs.toString().padStart(2,'0')}`;
+        el.classList.remove('warn', 'late');
+        if(mins >= 15) el.classList.add('late');
+        else if(mins >= 10) el.classList.add('warn');
+    });
+}
+setInterval(fetchOrders, 2500);
+setInterval(updateTimers, 1000);
+fetchOrders();
+</script></body></html>

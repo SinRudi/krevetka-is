@@ -1,0 +1,860 @@
+<!DOCTYPE html><html lang="ru"><head><meta charset="UTF-8">
+<title>Супер-Касса PRO — Креветка (г. Инта)</title>
+<style>
+body { margin:0; display:flex; height:calc(100vh - 58px); overflow:hidden; }
+.menu { flex: 2.1; padding: 18px 22px; overflow-y: auto; display: flex; flex-direction: column; }
+.cart { flex: 1; min-width: 430px; max-width: 480px; padding: 18px 20px; display: flex; flex-direction: column; border-left: 1px solid var(--border); overflow-y: auto; border-radius: 0 !important; }
+.topbar { display: flex; justify-content: space-between; align-items: center; margin-bottom: 14px; flex-wrap: wrap; gap: 10px; }
+.tabs { display: flex; gap: 8px; margin-bottom: 14px; flex-wrap: wrap; }
+.grid { display: grid; grid-template-columns: repeat(auto-fill, minmax(175px, 1fr)); gap: 14px; flex: 1; align-content: start; }
+.item { padding: 12px; cursor: pointer; user-select: none; display: flex; flex-direction: column; justify-content: space-between; }
+.item.stop { opacity: 0.45; cursor: not-allowed; border-color: #ef4444 !important; }
+.cart-items { flex: 1; overflow-y: auto; margin-bottom: 10px; min-height: 130px; pr: 4px; }
+.cart-item { background: rgba(0,0,0,0.25); border: 1px solid var(--border); border-radius: 11px; padding: 9px 11px; margin-bottom: 8px; }
+.cart-item-top { display: flex; justify-content: space-between; align-items: center; font-size: 14px; font-weight: 600; }
+.cart-item-mods { font-size: 11px; color: #fbbf24; margin-top: 4px; font-weight: 600; }
+.upsell-bar { background: rgba(255, 107, 0, 0.09); border: 1px dashed rgba(255, 107, 0, 0.4); border-radius: 12px; padding: 9px 11px; margin-bottom: 10px; }
+.upsell-title { font-size: 11px; font-weight: 800; color: #ff8533; text-transform: uppercase; margin-bottom: 6px; display: flex; justify-content: space-between; }
+.upsell-chips { display: flex; gap: 6px; flex-wrap: wrap; }
+.field { margin: 6px 0; }
+.field input, .field textarea, .field select { width: 100%; font-size: 13px; }
+.total-box { display: flex; justify-content: space-between; align-items: baseline; margin: 10px 0; padding: 10px 14px; background: rgba(255,107,0,0.12); border: 1px solid rgba(255,107,0,0.35); border-radius: 12px; }
+.total-val { font-size: 26px; font-weight: 900; color: #ff6b00; }
+.modal-overlay { position: fixed; top: 0; left: 0; right: 0; bottom: 0; background: rgba(0,0,0,0.75); backdrop-filter: blur(6px); display: none; align-items: center; justify-content: center; z-index: 10000; }
+.modal-content { padding: 24px; width: 700px; max-width: 95%; max-height: 90vh; overflow-y: auto; }
+.order-card { padding: 16px; margin-bottom: 12px; border-left: 5px solid var(--border) !important; display: flex; flex-direction: column; gap: 8px; }
+.order-card.new { border-left-color: #fbbf24 !important; }
+.order-card.cooking { border-left-color: #ff6b00 !important; }
+.order-card.ready { border-left-color: #10b981 !important; }
+.order-card.delivering { border-left-color: #8b5cf6 !important; }
+.order-status { font-size: 11px; font-weight: 800; text-transform: uppercase; padding: 4px 8px; border-radius: 6px; }
+.order-actions { display: flex; gap: 6px; margin-top: 6px; flex-wrap: wrap; }
+.order-actions button { flex: 1; padding: 8px 10px; border-radius: 8px; border: none; font-weight: 700; cursor: pointer; font-size: 12px; }
+#scheduled_time { position: absolute; opacity: 0; width: 0; height: 0; pointer-events: none; }
+</style>
+</head><body onkeydown="handleKeys(event)">
+
+<div class="menu">
+  <div class="topbar">
+    <div style="display:flex; align-items:center; gap:12px;">
+      <h2 style="margin:0; color:#ff6b00; font-weight:900;"> Терминал Кассира</h2>
+      {% if shift %}
+        <button class="btn-ready" style="padding:6px 13px; border-radius:99px; border:none; font-size:12px; font-weight:800; cursor:pointer;" onclick="openShiftControlModal()">● Смена #{{ shift.id }} (Х-Отчёт)</button>
+        <button class="quick-chip" onclick="openCashOpModal()"> Внес / Изъят</button>
+        <button class="btn-danger" style="padding:6px 13px; border-radius:8px; border:none; font-size:12px; font-weight:800; cursor:pointer;" onclick="openShiftControlModal(true)"> Закрыть смену</button>
+      {% else %}
+        <span style="background:rgba(239,68,68,0.18); color:#ef4444; padding:6px 12px; border-radius:99px; font-size:12px; font-weight:800;">● Смена закрыта</span>
+        <button class="btn-ready" style="padding:7px 15px; border-radius:9px; border:none; font-size:13px; font-weight:800; cursor:pointer; box-shadow:0 0 18px rgba(16,185,129,0.4);" onclick="openOpenShiftModal()"> Открыть смену</button>
+      {% endif %}
+    </div>
+    <div style="display:flex; align-items:center; gap:8px;">
+      <button id="sound-btn" class="quick-chip" onclick="toggleSound()"> Звук</button>
+      <button class="btn" style="background:linear-gradient(135deg,#0ea5e9,#0284c7)!important; padding:8px 14px; font-size:13px;" onclick="openAllOrdersModal()"> Все заказы (iikoDispatcher)</button>
+      <button class="btn" style="padding:8px 14px; font-size:13px;" onclick="openOrdersModal()"> Активные (F2)</button>
+      <button class="quick-chip" onclick="toggleTheme()" id="theme-btn">Тема</button>
+    </div>
+  </div>
+
+  <input type="text" id="search" placeholder=" Быстрый поиск блюда по названию (F1)..." oninput="filterItems()" style="width:100%; margin-bottom:12px; font-size:15px;">
+
+  <div class="tabs" id="category-tabs">
+    <div class="tab active" onclick="filterCategory('all', this)">Все позиции</div>
+    {% for cat in categories %}<div class="tab" onclick="filterCategory('{{ cat.category }}', this)">{{ cat.category }}</div>{% endfor %}
+  </div>
+
+  <div class="grid" id="menu-grid">
+    {% for item in menu %}
+    <div class="item {% if item.stop_list %}stop{% endif %}" data-id="{{ item.id }}" data-category="{{ item.category }}" data-name="{{ item.name|lower }}" data-price="{{ item.price }}"
+         onclick="{% if not item.stop_list %}addToCart({{ item.id }}, '{{ item.name }}', {{ item.price }}, '{{ item.category }}'){% endif %}">
+      <div>
+        {% if item.image %}
+        <div style="width:100%; height:105px; border-radius:10px; overflow:hidden; margin-bottom:9px; background:#090d16;">
+          <img src="/static/uploads/{{ item.image }}" style="width:100%; height:100%; object-fit:cover;">
+        </div>
+        {% endif %}
+        <h3 style="font-size:14px; margin:0 0 6px 0; line-height:1.25;">{{ item.name }}</h3>
+      </div>
+      <div style="display:flex; justify-content:space-between; align-items:center; margin-top:4px;">
+        <span style="font-size:16px; font-weight:900; color:#ff6b00;">{{ item.price }} ₽</span>
+        {% if item.category == 'Роллы' %}<span class="roll-8-badge"> 8 шт.</span>{% endif %}
+      </div>
+    </div>
+    {% endfor %}
+  </div>
+</div>
+
+<div class="cart">
+  <div style="display:flex; justify-content:space-between; align-items:center; margin-bottom:8px;">
+    <h3 style="margin:0; color:#ff6b00;"> Чек заказа</h3>
+    <span id="rolls-counter-badge" class="roll-8-badge">Роллов: 0 (0 кусочков)</span>
+  </div>
+
+  <div class="cart-items" id="cart-items"></div>
+
+  <!-- УМНЫЙ ДОПРОДАЖНИК (UPSELL BAR) -->
+  <div class="upsell-bar">
+    <div class="upsell-title">
+      <span>⚡ Авто-допродажа в 1 клик</span>
+      <span id="upsell-hint" style="color:#10b981;">Подобрано к чеку</span>
+    </div>
+    <div class="upsell-chips">
+      {% for item in menu %}{% if item.category == 'Дополнительно' %}
+      <button type="button" class="quick-chip" onclick="addToCart({{ item.id }}, '{{ item.name }}', {{ item.price }}, '{{ item.category }}')">+ {{ item.name }} ({{ item.price }}₽)</button>
+      {% endif %}{% endfor %}
+    </div>
+  </div>
+
+  <div style="display:grid; grid-template-columns:1fr 1fr; gap:8px;">
+    <div class="field">
+      <select id="delivery_type" onchange="toggleAddress()">
+        <option value="доставка"> Доставка</option>
+        <option value="самовывоз"> Самовывоз</option>
+      </select>
+    </div>
+    <div class="field">
+      <select id="zone" onchange="calcTotal()">
+        <option value="">Район г. Инта (0₽)</option>
+        {% for z in zones %}<option value="{{ z.name }} ({{ z.price }}₽)">{{ z.name }} (+{{ z.price }}₽)</option>{% endfor %}
+      </select>
+    </div>
+  </div>
+
+  <div class="field"><input id="phone" placeholder=" Телефон клиента (авто-поиск бонусов и адреса)" oninput="checkClient()"></div>
+  <div id="bonus-box" style="display:none; background:rgba(16,185,129,0.12); border:1px solid rgba(16,185,129,0.35); padding:8px 10px; border-radius:10px; margin:4px 0; font-size:12px;"></div>
+  <div class="field"><input id="address" placeholder=" Адрес в г. Инта (напр. ул. Воркутинская 7 кв 90)"></div>
+  <div class="field"><input id="comment" placeholder=" Комментарий повару / курьеру (кол-во персон)"></div>
+
+  <!-- ПРЕДЗАКАЗ И СКИДКА -->
+  <div style="display:grid; grid-template-columns:1.2fr 1fr; gap:8px; margin-top:4px;">
+    <div style="background:rgba(255,255,255,0.03); padding:7px; border-radius:10px; border:1px solid var(--border); display:flex; gap:4px; align-items:center; flex-wrap:wrap;">
+      <button type="button" class="quick-chip" onclick="setSched(30)">+30м</button>
+      <button type="button" class="quick-chip" onclick="setSched(60)">+1ч</button>
+      <button type="button" class="quick-chip" onclick="document.getElementById('scheduled_time').showPicker()">⏰ Время</button>
+      <input type="datetime-local" id="scheduled_time" onchange="updateSchedDisplay()">
+      <div id="sched_display" style="font-size:11px; color:#fbbf24; width:100%; display:none; font-weight:700;"></div>
+    </div>
+    <div style="background:rgba(255,255,255,0.03); padding:7px; border-radius:10px; border:1px solid var(--border); display:flex; gap:5px; align-items:center;">
+      <span style="font-size:12px; color:var(--text-muted);">Скидка:</span>
+      <input type="number" id="discount" value="0" min="0" oninput="calcTotal()" style="width:55px; padding:5px;">
+      <select id="discount_type" onchange="calcTotal()" style="width:55px; padding:5px;"><option value="rub">₽</option><option value="percent">%</option></select>
+    </div>
+  </div>
+
+  <!-- ОПЛАТА И БЫСТРЫЕ КУПЮРЫ -->
+  <div style="display:grid; grid-template-columns:1fr 1fr; gap:8px; margin-top:6px;">
+    <div class="field">
+      <select id="payment_method" onchange="togglePayment()">
+        <option value="карта"> Оплата картой</option>
+        <option value="наличные"> Наличные</option>
+        <option value="перевод"> Перевод СБП</option>
+        <option value="микс"> Микс (Нал+Карта)</option>
+      </select>
+    </div>
+    <div class="field" style="display:flex; gap:5px;">
+      <input type="text" id="promo_input" placeholder="Промокод" style="text-transform:uppercase;">
+      <button type="button" class="quick-chip" onclick="applyPromo()">OK</button>
+    </div>
+  </div>
+  <div id="promo_msg" style="font-size:11px; display:none; font-weight:700;"></div>
+
+  <div id="change-calc" style="display:none; background:rgba(255,255,255,0.04); padding:9px; border-radius:10px; margin-top:5px; border:1px solid var(--border);">
+    <div style="display:flex; justify-content:space-between; align-items:center; gap:6px; margin-bottom:6px;">
+      <span style="font-size:12px; color:#94a3b8;">Купюра клиента:</span>
+      <input type="number" id="client_gave" placeholder="Сумма" oninput="calcChange()" style="width:95px; padding:5px;">
+      <span id="change-result" style="font-weight:800; font-size:13px; color:#10b981;">Сдача: 0 ₽</span>
+    </div>
+    <div style="display:flex; gap:5px; flex-wrap:wrap;">
+      <button type="button" class="quick-chip" onclick="setQuickCash(0)">Без сдачи</button>
+      <button type="button" class="quick-chip" onclick="setQuickCash(500)">500 ₽</button>
+      <button type="button" class="quick-chip" onclick="setQuickCash(1000)">1000 ₽</button>
+      <button type="button" class="quick-chip" onclick="setQuickCash(2000)">2000 ₽</button>
+      <button type="button" class="quick-chip" onclick="setQuickCash(5000)">5000 ₽</button>
+    </div>
+  </div>
+
+  <div class="total-box">
+    <span style="font-size:14px; font-weight:700; color:#cbd5e1;">К ОПЛАТЕ:</span>
+    <span class="total-val" id="total">0 ₽</span>
+  </div>
+
+  <div style="display:flex; gap:8px;">
+    <button class="btn-submit" style="flex:2; padding:14px; font-size:16px;" onclick="submitOrder()"> ОФОРМИТЬ (Enter)</button>
+    <button class="btn-cancel" style="flex:0.8; padding:14px; margin:0;" onclick="cancelAll()">Очистить</button>
+  </div>
+</div>
+
+<!-- МОДАЛЬНОЕ ОКНО БЫСТРЫХ МОДИФИКАТОРОВ БЛЮДА -->
+<div class="modal-overlay" id="modsModal">
+  <div class="modal-content" style="width:420px;">
+    <h3 style="margin-top:0; color:#ff6b00;" id="mods-modal-title"> Модификатор к позиции</h3>
+    <div style="display:flex; flex-wrap:wrap; gap:8px; margin-bottom:14px;">
+      <button class="quick-chip" onclick="appendModTag('Без огурца')"> Без огурца</button>
+      <button class="quick-chip" onclick="appendModTag('Без лука')"> Без лука</button>
+      <button class="quick-chip" onclick="appendModTag('Острый [ОСТР]')">[ОСТР] Острый</button>
+      <button class="quick-chip" onclick="appendModTag('Мало соуса')"> Мало соуса</button>
+      <button class="quick-chip" onclick="appendModTag('Больше соуса')"> Больше соуса</button>
+      <button class="quick-chip" onclick="appendModTag('Отдельный контейнер')"> Отдельный ланч-бокс</button>
+      <button class="quick-chip" onclick="appendModTag('8 кусочков ровно')"> Нарезка 8 шт.</button>
+    </div>
+    <input type="text" id="mods-custom-input" placeholder="Или введите свой комментарий повару..." style="width:100%; margin-bottom:14px;">
+    <div style="display:flex; gap:8px;">
+      <button class="btn-ready" style="flex:1; padding:11px; border:none; border-radius:10px; font-weight:800; cursor:pointer;" onclick="saveModModal()">Сохранить</button>
+      <button class="btn-cancel" style="flex:1; padding:11px; border:none; border-radius:10px; font-weight:800; cursor:pointer;" onclick="document.getElementById('modsModal').style.display='none'">Закрыть</button>
+    </div>
+  </div>
+</div>
+
+<!-- МОДАЛЬНОЕ ОКНО КАССОВЫХ ОПЕРАЦИЙ (ВНЕСЕНИЕ / ИЗЪЯТИЕ) -->
+<div class="modal-overlay" id="cashOpModal">
+  <div class="modal-content" style="width:420px;">
+    <h3 style="margin-top:0; color:#10b981;"> Кассовая операция (Внесение / Изъятие)</h3>
+    <div class="field">
+      <select id="cash_op_type">
+        <option value="in"> Внесение наличных (размен в кассу)</option>
+        <option value="out"> Изъятие наличных (оплата поставщику / курьеру)</option>
+      </select>
+    </div>
+    <div class="field"><input type="number" id="cash_op_amount" placeholder="Сумма (₽)"></div>
+    <div class="field"><input type="text" id="cash_op_comment" placeholder="Комментарий (напр. Размен с утра)"></div>
+    <div style="display:flex; gap:8px; margin-top:14px;">
+      <button class="btn-ready" style="flex:1; padding:12px; border:none; border-radius:10px; font-weight:800; cursor:pointer;" onclick="submitCashOp()">Провести</button>
+      <button class="btn-cancel" style="flex:1; padding:12px; border:none; border-radius:10px; font-weight:800; cursor:pointer;" onclick="document.getElementById('cashOpModal').style.display='none'">Отмена</button>
+    </div>
+  </div>
+</div>
+
+<!-- АКТИВНЫЕ ЗАКАЗЫ (F2) -->
+<div class="modal-overlay" id="ordersModal">
+  <div class="modal-content" style="width:850px;">
+    <div style="display:flex; justify-content:space-between; align-items:center; margin-bottom:15px;">
+      <h2 style="margin:0; color:#ff6b00;"> Активные заказы в работе</h2>
+      <button class="quick-chip" onclick="document.getElementById('ordersModal').style.display='none'">✖ Закрыть (Esc)</button>
+    </div>
+    <div id="modal-orders-list" style="display:grid; grid-template-columns:repeat(auto-fill,minmax(340px,1fr)); gap:15px;"></div>
+  </div>
+</div>
+
+<!-- ПОЛНОЭКРАННЫЙ ДИСПЕТЧЕР ЗАКАЗОВ (IIKO DISPATCHER) -->
+<div class="modal-overlay" id="allOrdersModal">
+  <div class="modal-content" style="width:96vw; height:92vh; max-width:96vw; max-height:92vh; display:flex; flex-direction:column;">
+    <div style="display:flex; justify-content:space-between; align-items:center; border-bottom:1px solid var(--border); padding-bottom:14px; margin-bottom:16px;">
+      <div style="display:flex; align-items:center; gap:15px;">
+        <button class="quick-chip" style="padding:9px 16px; font-size:14px;" onclick="document.getElementById('allOrdersModal').style.display='none'">← Назад в Кассу</button>
+        <h2 style="margin:0; color:#0ea5e9;"> Диспетчер заказов и Курьеров</h2>
+      </div>
+      <div style="display:flex; gap:10px; align-items:center; flex-wrap:wrap;">
+        <input type="date" id="filter-date" onchange="fetchAllOrders()" title="Фильтр по дате">
+        <button class="quick-chip" onclick="document.getElementById('filter-date').value=''; fetchAllOrders();" title="Показать заказы за все дни"> Все даты</button>
+        <select id="filter-status" onchange="fetchAllOrders()">
+          <option value="">Все статусы</option>
+          <option value="new">● Новые</option>
+          <option value="cooking">● Готовятся</option>
+          <option value="ready">● Готовы на выдачу</option>
+          <option value="delivering">● У курьера в пути</option>
+          <option value="done">✓ Завершены</option>
+          <option value="cancelled">× Отменены</option>
+        </select>
+        <select id="filter-payment" onchange="fetchAllOrders()">
+          <option value="">Все оплаты (Нал / Карта / Микс)</option>
+          <option value="наличные"> Наличные</option>
+          <option value="карта"> Карта</option>
+          <option value="микс"> Микс</option>
+          <option value="перевод"> Перевод СБП</option>
+        </select>
+        <button class="btn" style="padding:9px 16px;" onclick="fetchAllOrders()"> Обновить</button>
+        <span id="filter-info" class="roll-8-badge" style="font-size:13px; padding:7px 14px;">Заказов: 0</span>
+      </div>
+    </div>
+    <div id="all-orders-list" style="display:grid; grid-template-columns:repeat(auto-fill, minmax(340px, 1fr)); gap:16px; overflow-y:auto; flex:1; align-content:start;"></div>
+  </div>
+</div>
+
+<!-- МОДАЛЬНОЕ ОКНО РЕДАКТИРОВАНИЯ СОСТАВА ЗАКАЗА -->
+<div class="modal-overlay" id="editModal">
+  <div class="modal-content" style="width:520px;">
+    <div style="display:flex; justify-content:space-between; margin-bottom:15px;">
+      <h2 id="edit-title" style="margin:0; color:#fbbf24;">Ред. Редактирование заказа</h2>
+      <button class="quick-chip" onclick="document.getElementById('editModal').style.display='none'">✖</button>
+    </div>
+    <div id="edit-items-list" style="margin-bottom:15px;"></div>
+    <select id="add-menu-item" onchange="addNewItem()" style="width:100%; margin-bottom:15px;">
+      <option value="">+ Добавить блюдо в этот заказ...</option>
+      {% for m in menu %}<option value="{{ m.id }}" data-name="{{ m.name }}" data-price="{{ m.price }}">{{ m.name }} ({{ m.price }} ₽)</option>{% endfor %}
+    </select>
+    <div style="text-align:right; font-size:20px; font-weight:900; margin-bottom:12px;">Новый итог: <span id="edit-total" style="color:#10b981;">0 ₽</span></div>
+    <button class="btn-ready" style="width:100%; padding:14px; border:none; border-radius:12px; font-weight:800; font-size:15px; cursor:pointer;" onclick="saveEditedOrder()"> Сохранить изменения заказа</button>
+  </div>
+</div>
+
+<script>
+let currentCategory = 'all';
+let cart = [];
+let clientBonus = 0;
+let clientLevel = 'bronze';
+let currentPromo = { code: '', type: '', value: 0 };
+let activeModIndex = null;
+
+function toggleTheme() {
+    document.body.classList.toggle('light-theme');
+    const isLight = document.body.classList.contains('light-theme');
+    localStorage.setItem('theme', isLight ? 'light' : 'dark');
+}
+
+function handleKeys(e){
+    if(e.key === 'F1'){ e.preventDefault(); document.getElementById('search').focus(); }
+    if(e.key === 'F2'){ e.preventDefault(); openOrdersModal(); }
+    if(e.key === 'Escape'){
+        ['ordersModal','allOrdersModal','editModal','modsModal','cashOpModal'].forEach(id => document.getElementById(id).style.display='none');
+    }
+    if(e.key === 'Enter' && !['INPUT','TEXTAREA','SELECT'].includes(document.activeElement.tagName)){
+        e.preventDefault(); submitOrder();
+    }
+}
+
+function filterCategory(cat, btn){
+    document.querySelectorAll('.tab').forEach(t=>t.classList.remove('active'));
+    btn.classList.add('active');
+    currentCategory = cat;
+    filterItems();
+}
+
+function filterItems(){
+    const q = document.getElementById('search').value.toLowerCase();
+    document.querySelectorAll('.item').forEach(item=>{
+        const matchCat = (currentCategory === 'all' || item.dataset.category === currentCategory);
+        const matchQ = item.dataset.name.includes(q);
+        item.style.display = (matchCat && matchQ) ? 'flex' : 'none';
+    });
+}
+
+function addToCart(id, name, price, category='Роллы'){
+    const ex = cart.find(i => i.id === id && !i.mods);
+    if(ex) ex.qty++;
+    else cart.push({ id, name, price, qty: 1, mods: '', category });
+    renderCart();
+}
+
+function renderCart(){
+    const c = document.getElementById('cart-items');
+    c.innerHTML = '';
+    let rollsCount = 0;
+    cart.forEach((it, idx) => {
+        if(it.category === 'Роллы') rollsCount += it.qty;
+        const d = document.createElement('div');
+        d.className = 'cart-item';
+        d.innerHTML = `
+            <div class="cart-item-top">
+                <span>${it.name} ${it.category==='Роллы' ? '<span class="roll-8-badge">8 шт.</span>' : ''}</span>
+                <div style="display:flex; align-items:center; gap:6px;">
+                    <button class="quick-chip" style="padding:2px 7px;" onclick="openModModal(${idx})" title="Модификатор повару"></button>
+                    <input type="number" min="1" value="${it.qty}" onchange="changeQty(${idx},this.value)" style="width:46px; padding:3px; text-align:center;">
+                    <b style="min-width:55px; text-align:right; color:#ff6b00;">${it.price * it.qty} ₽</b>
+                    <button onclick="removeItem(${idx})" style="background:none; border:none; color:#ef4444; cursor:pointer; font-size:15px;">✖</button>
+                </div>
+            </div>
+            ${it.mods ? `<div class="cart-item-mods"> Повару: ${it.mods}</div>` : ''}
+        `;
+        c.appendChild(d);
+    });
+    document.getElementById('rolls-counter-badge').innerText = `Роллов: ${rollsCount} (${rollsCount * 8} кусочков)`;
+    document.getElementById('upsell-hint').innerText = rollsCount > 0 ? `Рекомендуем ${rollsCount} компл. специй` : 'Добавьте специи в 1 клик';
+    calcTotal();
+}
+
+function openModModal(idx){
+    activeModIndex = idx;
+    document.getElementById('mods-modal-title').innerText = ` Модификатор: ${cart[idx].name}`;
+    document.getElementById('mods-custom-input').value = cart[idx].mods || '';
+    document.getElementById('modsModal').style.display = 'flex';
+}
+function appendModTag(tag){
+    const inp = document.getElementById('mods-custom-input');
+    inp.value = inp.value ? (inp.value + ', ' + tag) : tag;
+}
+function saveModModal(){
+    if(activeModIndex !== null && cart[activeModIndex]){
+        cart[activeModIndex].mods = document.getElementById('mods-custom-input').value.trim();
+        renderCart();
+    }
+    document.getElementById('modsModal').style.display = 'none';
+}
+
+function changeQty(idx,v){ cart[idx].qty = Math.max(1, parseInt(v)||1); renderCart(); }
+function removeItem(idx){ cart.splice(idx,1); renderCart(); }
+function cancelAll(){
+    cart=[]; renderCart();
+    document.getElementById('phone').value='';
+    document.getElementById('address').value='';
+    document.getElementById('comment').value='';
+    document.getElementById('discount').value='0';
+    document.getElementById('bonus-box').style.display='none';
+    clearPromo();
+}
+
+function toggleAddress(){
+    const type = document.getElementById('delivery_type').value;
+    const addr = document.getElementById('address');
+    const zone = document.getElementById('zone');
+    if(type === 'самовывоз'){
+        addr.value = 'Самовывоз (ул. Горького, 1)';
+        addr.disabled = true;
+        zone.style.display = 'none';
+    } else {
+        if(addr.value.startsWith('Самовывоз')) addr.value = '';
+        addr.disabled = false;
+        zone.style.display = 'block';
+    }
+    calcTotal();
+}
+
+function checkClient(){
+    const phone = document.getElementById('phone').value.trim();
+    if(phone.length >= 6){
+        fetch('/api/client/' + encodeURIComponent(phone)).then(r=>r.json()).then(d=>{
+            const box = document.getElementById('bonus-box');
+            if(d.success){
+                clientBonus = d.bonuses; clientLevel = d.level;
+                let lvlText = clientLevel === 'gold' ? ' Золото (Доставка 0₽)' : (clientLevel === 'silver' ? ' Серебро' : ' Бронза');
+                box.style.display = 'block';
+                box.innerHTML = `<div style="display:flex; justify-content:space-between; align-items:center;">
+                    <span>Статус: <b>${lvlText}</b> • Доступно: <b>${clientBonus} бонусов</b></span>
+                    <input type="number" id="use_bonus" placeholder="Списать" value="0" min="0" max="${clientBonus}" oninput="calcTotal()" style="width:85px; padding:4px;">
+                </div>`;
+                fetch('/api/site/client/' + encodeURIComponent(phone)).then(r=>r.json()).then(data=>{
+                    if(data.success && data.address && !document.getElementById('address').value) {
+                        document.getElementById('address').value = data.address;
+                    }
+                });
+            } else {
+                box.style.display = 'none'; clientBonus = 0; clientLevel = 'bronze';
+            }
+            calcTotal();
+        });
+    }
+}
+
+function togglePayment(){
+    const method = document.getElementById('payment_method').value;
+    document.getElementById('change-calc').style.display = (method === 'наличные' || method === 'микс') ? 'block' : 'none';
+    calcTotal();
+}
+
+function setQuickCash(amount){
+    const total = parseInt(document.getElementById('total').innerText) || 0;
+    document.getElementById('client_gave').value = amount === 0 ? total : amount;
+    calcChange();
+}
+
+function setSched(mins){
+    const now = new Date(); now.setMinutes(now.getMinutes() + mins);
+    const localISOTime = (new Date(now - now.getTimezoneOffset() * 60000)).toISOString().slice(0,16);
+    document.getElementById('scheduled_time').value = localISOTime;
+    updateSchedDisplay();
+}
+function updateSchedDisplay(){
+    const val = document.getElementById('scheduled_time').value;
+    const disp = document.getElementById('sched_display');
+    if(val){ disp.innerText = '⏰ Предзаказ ко времени: ' + val.replace('T', ' '); disp.style.display = 'block'; }
+    else disp.style.display = 'none';
+}
+
+function applyPromo(){
+    const code = document.getElementById('promo_input').value.trim().toUpperCase();
+    const msg = document.getElementById('promo_msg');
+    if(!code) { clearPromo(); return; }
+    fetch('/api/check_promo', {method:'POST', headers:{'Content-Type':'application/json'}, body:JSON.stringify({code})})
+    .then(r=>r.json()).then(d=>{
+        if(d.success){
+            currentPromo = { code, type: d.type, value: d.value };
+            msg.style.display = 'block'; msg.style.color = '#10b981'; msg.innerText = `✓ Промокод ${code} применен!`;
+            calcTotal();
+        } else {
+            clearPromo();
+            msg.style.display = 'block'; msg.style.color = '#ef4444'; msg.innerText = '× ' + d.error;
+        }
+    });
+}
+function clearPromo(){ currentPromo = { code: '', type: '', value: 0 }; document.getElementById('promo_input').value = ''; document.getElementById('promo_msg').style.display = 'none'; calcTotal(); }
+
+function calcTotal(){
+    const subTotal = cart.reduce((s,i)=>s+i.price*i.qty, 0);
+    const discount = parseInt(document.getElementById('discount').value) || 0;
+    const type = document.getElementById('discount_type').value;
+    let total = type === 'percent' ? Math.max(0, subTotal - Math.round(subTotal * discount / 100)) : Math.max(0, subTotal - discount);
+    if(currentPromo.code){
+        let pDisc = currentPromo.type === 'percent' ? Math.round(subTotal * currentPromo.value / 100) : currentPromo.value;
+        total = Math.max(0, total - pDisc);
+    }
+    const zoneSelect = document.getElementById('zone');
+    if(document.getElementById('delivery_type').value === 'доставка' && zoneSelect.value){
+        const match = zoneSelect.value.match(/\((\d+)₽\)/);
+        if(match) {
+            let deliv = parseInt(match[1]);
+            if(clientLevel === 'gold') deliv = 0;
+            total += deliv;
+        }
+    }
+    let useBonus = parseInt(document.getElementById('use_bonus')?.value) || 0;
+    if(useBonus > clientBonus) useBonus = clientBonus;
+    total = Math.max(0, total - useBonus);
+    document.getElementById('total').innerText = total + ' ₽';
+    calcChange();
+}
+
+function calcChange(){
+    const total = parseInt(document.getElementById('total').innerText) || 0;
+    const gave = parseInt(document.getElementById('client_gave')?.value) || 0;
+    const res = document.getElementById('change-result');
+    if(!res) return;
+    if(gave >= total && total > 0) { res.innerText = `Сдача: ${gave - total} ₽`; res.style.color = '#10b981'; }
+    else if(gave > 0) { res.innerText = `Доплата: ${total - gave} ₽`; res.style.color = '#ef4444'; }
+    else { res.innerText = 'Сдача: 0 ₽'; }
+}
+
+function submitOrder(){
+    if(cart.length === 0) return alert('Добавьте позиции в чек!');
+    fetch('/api/create_order', {
+        method:'POST', headers:{'Content-Type':'application/json'},
+        body:JSON.stringify({
+            items: cart,
+            discount: parseInt(document.getElementById('discount').value) || 0,
+            discount_type: document.getElementById('discount_type').value,
+            use_bonus: parseInt(document.getElementById('use_bonus')?.value) || 0,
+            zone: document.getElementById('zone').value,
+            address: document.getElementById('address').value,
+            phone: document.getElementById('phone').value,
+            comment: document.getElementById('comment').value,
+            scheduled_time: document.getElementById('scheduled_time').value,
+            payment_method: document.getElementById('payment_method').value,
+            delivery_type: document.getElementById('delivery_type').value,
+            promo_code: currentPromo.code
+        })
+    }).then(r=>r.json()).then(d=>{
+        if(d.success){ cancelAll(); alert(`✓ Заказ #${d.order_id} на сумму ${d.total} ₽ отправлен на кухню KDS!`); }
+        else { if(d.need_open_shift) { alert(d.error); openOpenShiftModal(); } else { alert('Ошибка: ' + d.error); } }
+    });
+}
+
+function openCashOpModal(){ document.getElementById('cashOpModal').style.display='flex'; }
+function submitCashOp(){
+    fetch('/api/cash_op', {
+        method:'POST', headers:{'Content-Type':'application/json'},
+        body:JSON.stringify({
+            op_type: document.getElementById('cash_op_type').value,
+            amount: document.getElementById('cash_op_amount').value,
+            comment: document.getElementById('cash_op_comment').value
+        })
+    }).then(r=>r.json()).then(d=>{
+        if(d.success){ alert('✓ Кассовая операция записана в смену!'); document.getElementById('cashOpModal').style.display='none'; }
+        else alert(d.error || 'Ошибка');
+    });
+}
+
+const labels = {new:'● Новый', cooking:'● Готовится', ready:'● Готов', delivering:'● У курьера', done:'✓ Выдан', cancelled:'× Отменен'};
+
+function openOrdersModal(){ document.getElementById('ordersModal').style.display='flex'; fetchActiveOrders(); }
+function fetchActiveOrders(){
+    fetch('/api/orders?status=all_active').then(r=>r.json()).then(orders=>{
+        const c = document.getElementById('modal-orders-list'); c.innerHTML = '';
+        if(orders.length === 0){ c.innerHTML = '<div style="grid-column:1/-1;text-align:center;color:#94a3b8;padding:30px;">Активных заказов сейчас нет</div>'; return; }
+        orders.forEach(o => c.appendChild(buildOrderCard(o)));
+    });
+}
+
+function openAllOrdersModal(){ document.getElementById('allOrdersModal').style.display='flex'; fetchAllOrders(); }
+function fetchAllOrders(){
+    const date = document.getElementById('filter-date')?.value || '';
+    const status = document.getElementById('filter-status')?.value || '';
+    const payment = document.getElementById('filter-payment')?.value || '';
+    const params = new URLSearchParams();
+    if(date) params.append('date', date);
+    if(status) params.append('status', status);
+    if(payment) params.append('payment', payment);
+
+    fetch('/api/all_orders?' + params.toString()).then(r=>r.json()).then(data=>{
+        const c = document.getElementById('all-orders-list'); c.innerHTML = '';
+        document.getElementById('filter-info').innerText = `Заказов: ${data.stats.count} • Выручка: ${data.stats.total} ₽`;
+        if(!data.orders || data.orders.length === 0){
+            c.innerHTML = '<div style="grid-column:1/-1;text-align:center;color:#94a3b8;padding:40px;font-size:16px;">По выбранному фильтру заказов не найдено</div>';
+            return;
+        }
+        data.orders.forEach(o => c.appendChild(buildOrderCard(o)));
+    });
+}
+
+function normalizePayValue(pm){
+    const val = (pm || '').toLowerCase();
+    if(val === 'cash' || val === 'наличные') return 'наличные';
+    if(val === 'card' || val === 'карта') return 'карта';
+    if(val === 'mix' || val === 'микс') return 'микс';
+    if(val === 'перевод' || val === 'sbp') return 'перевод';
+    return 'карта';
+}
+
+function changeOrderPayment(id, newPay){
+    fetch('/api/set_payment/' + id, {
+        method:'POST',
+        headers:{'Content-Type':'application/json'},
+        body:JSON.stringify({payment_method: newPay})
+    }).then(()=>{ fetchActiveOrders(); fetchAllOrders(); });
+}
+
+function buildOrderCard(o){
+    const d = document.createElement('div');
+    d.className = 'order-card ' + o.status;
+    const items = (o.items || []).map(i=>`<div style="display:flex;justify-content:space-between;font-size:13px;"><span>${i.name} ${i.modifiers ? `<small style="color:#fbbf24;">(${i.modifiers})</small>` : ''}</span><b>×${i.qty}</b></div>`).join('');
+    const normPay = normalizePayValue(o.payment_method);
+
+    let actions = '';
+    if(o.status === 'new') actions += `<button class="btn-cook" onclick="setStatus(${o.id},'cooking')"> В готовку</button><button class="btn-edit" onclick="openEditModal(${o.id})">Ред. Ред.</button>`;
+    if(o.status === 'cooking') actions += `<button class="btn-ready" onclick="setStatus(${o.id},'ready')">✓ Готов</button><button class="btn-edit" onclick="openEditModal(${o.id})">Ред. Ред.</button>`;
+    if(o.status === 'ready') actions += `<button style="background:#8b5cf6;color:#fff;" onclick="setStatus(${o.id},'delivering')"> Курьеру</button><button class="btn-done" onclick="setStatus(${o.id},'done')">✓ Выдать</button>`;
+    if(o.status === 'delivering') actions += `<button class="btn-done" onclick="setStatus(${o.id},'done')">✓ Завершить</button>`;
+    actions += `<button style="background:linear-gradient(135deg,#f59e0b,#d97706);color:#000;font-weight:900;" onclick="window.open('/fiscal/${o.id}','_blank')"> Фискальный</button>`;
+    actions += `<button style="background:#334155;color:#fff;" onclick="window.open('/receipt/${o.id}','_blank')"> Пречек</button>`;
+    actions += `<button style="background:#1e293b;color:#cbd5e1;" onclick="window.open('/ticket/${o.id}','_blank')"> Бегунок</button>`;
+
+    d.innerHTML = `
+        <div style="display:flex;justify-content:space-between;align-items:center;border-bottom:1px solid var(--border);padding-bottom:8px;gap:8px;">
+            <span style="font-size:18px;font-weight:900;color:#ff6b00;">#${o.id} <small style="color:#94a3b8;font-weight:600;">${(o.created_at||'').slice(11,16)}</small></span>
+            <div style="display:flex;gap:6px;align-items:center;">
+                <select onchange="setStatus(${o.id}, this.value)" style="padding:4px 8px!important;font-size:12px!important;font-weight:700;border-radius:8px!important;">
+                    <option value="new" ${o.status==='new'?'selected':''}>● Новый</option>
+                    <option value="cooking" ${o.status==='cooking'?'selected':''}>● Готовится</option>
+                    <option value="ready" ${o.status==='ready'?'selected':''}>● Готов</option>
+                    <option value="delivering" ${o.status==='delivering'?'selected':''}>● В пути</option>
+                    <option value="done" ${o.status==='done'?'selected':''}>✓ Завершён</option>
+                    <option value="cancelled" ${o.status==='cancelled'?'selected':''}>× Отменён</option>
+                </select>
+                <select onchange="changeOrderPayment(${o.id}, this.value)" style="padding:4px 8px!important;font-size:12px!important;font-weight:700;border-radius:8px!important;">
+                    <option value="наличные" ${normPay==='наличные'?'selected':''}> Наличные</option>
+                    <option value="карта" ${normPay==='карта'?'selected':''}> Карта</option>
+                    <option value="микс" ${normPay==='микс'?'selected':''}> Микс</option>
+                    <option value="перевод" ${normPay==='перевод'?'selected':''}> Перевод</option>
+                </select>
+            </div>
+        </div>
+        <div style="display:flex;flex-direction:column;gap:4px;margin:4px 0;">${items}</div>
+        <div style="font-size:12px;color:#94a3b8;"> ${o.address || 'Самовывоз'} •  ${o.phone || '—'}</div>
+        <div style="display:flex;justify-content:space-between;align-items:center;margin-top:4px;">
+            <span style="font-size:12px;color:#cbd5e1;"> ${(o.created_at||'').slice(0,10)}</span>
+            <b style="font-size:18px;color:#10b981;">${o.total} ₽</b>
+        </div>
+        <div class="order-actions">${actions}</div>
+    `;
+    return d;
+}
+
+function setStatus(id, status){
+    fetch('/api/set_status/'+id, {method:'POST', headers:{'Content-Type':'application/json'}, body:JSON.stringify({status})})
+    .then(()=>{ fetchActiveOrders(); fetchAllOrders(); });
+}
+
+let editOrderId = null; let editCart = [];
+function openEditModal(id){
+    fetch('/api/all_orders').then(r=>r.json()).then(data=>{
+        const o = data.orders.find(x => x.id === id); if(!o) return;
+        editOrderId = id;
+        editCart = o.items.map(i => ({ id: i.menu_id, name: i.name, price: i.price, qty: i.qty, mods: i.modifiers || '' }));
+        document.getElementById('edit-title').innerText = 'Ред. Редактирование заказа #' + id;
+        document.getElementById('editModal').style.display = 'flex';
+        renderEditCart();
+    });
+}
+function renderEditCart(){
+    const c = document.getElementById('edit-items-list'); c.innerHTML = '';
+    let total = 0;
+    editCart.forEach((it, idx) => {
+        total += it.price * it.qty;
+        c.innerHTML += `<div style="display:flex;justify-content:space-between;align-items:center;padding:8px;background:rgba(0,0,0,0.25);border-radius:8px;margin-bottom:6px;">
+            <span>${it.name}</span>
+            <div style="display:flex;align-items:center;gap:8px;">
+                <input type="number" min="1" value="${it.qty}" onchange="editCart[${idx}].qty=Math.max(1,parseInt(this.value)||1);renderEditCart();" style="width:55px;">
+                <b>${it.price * it.qty} ₽</b>
+                <button onclick="editCart.splice(${idx},1);renderEditCart();" style="background:none;border:none;color:#ef4444;cursor:pointer;">✖</button>
+            </div>
+        </div>`;
+    });
+    document.getElementById('edit-total').innerText = total + ' ₽';
+}
+function addNewItem(){
+    const sel = document.getElementById('add-menu-item');
+    if(!sel.value) return;
+    const name = sel.options[sel.selectedIndex].dataset.name;
+    const price = parseInt(sel.options[sel.selectedIndex].dataset.price);
+    editCart.push({ id: sel.value, name, price, qty: 1 });
+    sel.value = ''; renderEditCart();
+}
+function saveEditedOrder(){
+    if(editCart.length === 0) return alert('В заказе должна быть минимум 1 позиция');
+    fetch('/api/order/update_items/' + editOrderId, {
+        method:'POST', headers:{'Content-Type':'application/json'}, body:JSON.stringify({items: editCart})
+    }).then(r=>r.json()).then(d=>{
+        if(d.success){ document.getElementById('editModal').style.display='none'; fetchAllOrders(); fetchActiveOrders(); }
+        else alert(d.error);
+    });
+}
+
+let soundEnabled = false;
+function toggleSound(){
+    soundEnabled = !soundEnabled;
+    document.getElementById('sound-btn').innerText = soundEnabled ? ' Звук ВКЛ' : ' Звук';
+}
+</script>
+<!-- МОДАЛЬНОЕ ОКНО ОТКРЫТИЯ СМЕНЫ (ВВОД НАЧАЛЬНОГО РАЗМЕНА) -->
+<div class="modal-overlay" id="openShiftModal">
+  <div class="modal-content" style="width:430px;">
+    <h2 style="margin-top:0; color:#10b981;"> Открытие кассовой смены</h2>
+    <p style="font-size:13px; color:#94a3b8; margin-top:0;">Укажите сумму наличных в денежном ящике на начало смены (размен):</p>
+    <div class="field">
+      <input type="number" id="opening_cash_input" value="1000" min="0" placeholder="Начальный размен (₽)" style="font-size:18px; font-weight:800; text-align:center;">
+    </div>
+    <div style="display:flex; gap:6px; justify-content:center; margin:10px 0 16px 0;">
+      <button type="button" class="quick-chip" onclick="document.getElementById('opening_cash_input').value=0">0 ₽</button>
+      <button type="button" class="quick-chip" onclick="document.getElementById('opening_cash_input').value=1000">1000 ₽</button>
+      <button type="button" class="quick-chip" onclick="document.getElementById('opening_cash_input').value=2000">2000 ₽</button>
+      <button type="button" class="quick-chip" onclick="document.getElementById('opening_cash_input').value=5000">5000 ₽</button>
+    </div>
+    <div style="display:flex; gap:8px;">
+      <button class="btn-ready" style="flex:1.5; padding:13px; border:none; border-radius:11px; font-weight:800; font-size:15px; cursor:pointer;" onclick="confirmOpenShift()"> Открыть смену</button>
+      <button class="btn-cancel" style="flex:0.8; padding:13px; border:none; border-radius:11px; font-weight:800; cursor:pointer;" onclick="document.getElementById('openShiftModal').style.display='none'">Отмена</button>
+    </div>
+  </div>
+</div>
+
+<!-- МОДАЛЬНОЕ ОКНО УПРАВЛЕНИЯ СМЕНОЙ, X-ОТЧЁТА И ЗАКРЫТИЯ СМЕНЫ (Z-ОТЧЁТ) -->
+<div class="modal-overlay" id="shiftControlModal">
+  <div class="modal-content" style="width:540px;">
+    <div style="display:flex; justify-content:space-between; align-items:center; border-bottom:1px solid var(--border); padding-bottom:12px; margin-bottom:14px;">
+      <h2 style="margin:0; color:#ff6b00;" id="shift-modal-title"> Смена #— (Х-Отчёт и Сверка)</h2>
+      <button class="quick-chip" onclick="document.getElementById('shiftControlModal').style.display='none'">✖</button>
+    </div>
+
+    <div style="display:grid; grid-template-columns:1fr 1fr; gap:10px; margin-bottom:14px;">
+      <div style="background:rgba(255,255,255,0.03); border:1px solid var(--border); border-radius:12px; padding:12px;">
+        <div style="font-size:11px; color:#94a3b8;">ВЫРУЧКА ЗА СМЕНУ</div>
+        <div style="font-size:22px; font-weight:900; color:#10b981;" id="sh-rev">0 ₽</div>
+        <div style="font-size:12px; color:#cbd5e1; margin-top:4px;">Чеков: <b id="sh-orders">0</b></div>
+      </div>
+      <div style="background:rgba(255,255,255,0.03); border:1px solid var(--border); border-radius:12px; padding:12px;">
+        <div style="font-size:11px; color:#94a3b8;">ПО СПОСОБАМ ОПЛАТЫ</div>
+        <div style="font-size:14px; font-weight:700; margin-top:4px;"> Наличные: <b id="sh-cash" style="color:#fbbf24;">0 ₽</b></div>
+        <div style="font-size:14px; font-weight:700; margin-top:4px;"> Безнал: <b id="sh-card" style="color:#0ea5e9;">0 ₽</b></div>
+      </div>
+    </div>
+
+    <div style="background:rgba(16,185,129,0.08); border:1px solid rgba(16,185,129,0.3); border-radius:12px; padding:12px 14px; margin-bottom:16px;">
+      <div style="font-size:12px; font-weight:800; color:#10b981; margin-bottom:8px; text-transform:uppercase;">️ Сверка денежного ящика (Наличные)</div>
+      <div style="display:flex; justify-content:space-between; font-size:13px; margin-bottom:4px;"><span>Начальный размен:</span><b id="sh-open-cash">0 ₽</b></div>
+      <div style="display:flex; justify-content:space-between; font-size:13px; margin-bottom:4px;"><span>Внесения (+) / Изъятия (-):</span><span><b id="sh-in" style="color:#10b981;">+0 ₽</b> / <b id="sh-out" style="color:#ef4444;">-0 ₽</b></span></div>
+      <div style="display:flex; justify-content:space-between; font-size:15px; font-weight:900; border-top:1px solid rgba(255,255,255,0.1); padding-top:6px; margin-top:6px;">
+        <span>ОЖИДАЕТСЯ В КАССЕ:</span>
+        <span id="sh-expected" style="color:#fbbf24;">0 ₽</span>
+      </div>
+    </div>
+
+    <div style="background:rgba(239,68,68,0.08); border:1px solid rgba(239,68,68,0.35); border-radius:12px; padding:14px; margin-bottom:14px;">
+      <div style="font-size:13px; font-weight:800; color:#f8fafc; margin-bottom:8px;"> Закрытие смены: пересчитайте наличные в ящике</div>
+      <div style="display:flex; gap:10px; align-items:center;">
+        <input type="number" id="actual_cash_input" placeholder="Факт наличных в ящике (₽)" oninput="calcShiftDiscrepancy()" style="flex:1; font-size:16px; font-weight:800;">
+        <button type="button" class="quick-chip" onclick="fillExactExpectedCash()">Ровно по кассе</button>
+      </div>
+      <div id="discrepancy-preview" style="font-size:13px; font-weight:800; margin-top:8px; color:#10b981;">Расхождение: 0 ₽ (Идеально сходится)</div>
+    </div>
+
+    <div style="display:flex; gap:8px;">
+      <button class="btn-danger" style="flex:1.6; padding:14px; border:none; border-radius:11px; font-weight:900; font-size:14px; cursor:pointer;" onclick="confirmCloseShift()"> ЗАКРЫТЬ СМЕНУ И ПЕЧАТЬ Z-ОТЧЁТА</button>
+      <button class="quick-chip" style="flex:1; padding:14px; font-size:13px;" onclick="printCurrentXReport()"> Печать X-Отчёта</button>
+    </div>
+  </div>
+</div>
+
+<script>
+let currentShiftMetrics = null;
+
+function openOpenShiftModal(){
+    document.getElementById('openShiftModal').style.display = 'flex';
+    setTimeout(() => document.getElementById('opening_cash_input')?.focus(), 100);
+}
+
+function confirmOpenShift(){
+    const opening_cash = parseInt(document.getElementById('opening_cash_input').value) || 0;
+    fetch('/shift/open', {
+        method: 'POST',
+        headers: {'Content-Type': 'application/json'},
+        body: JSON.stringify({ opening_cash })
+    }).then(r=>r.json()).then(d=>{
+        if(d.success) window.location.reload();
+    });
+}
+
+function openShiftControlModal(focusClose=false){
+    fetch('/api/shift/current').then(r=>r.json()).then(d=>{
+        if(!d.open){
+            openOpenShiftModal();
+            return;
+        }
+        currentShiftMetrics = d.shift;
+        document.getElementById('shift-modal-title').innerText = ` Смена #${d.shift.id} (Открыта в ${d.shift.opened_at.slice(11,16)})`;
+        document.getElementById('sh-rev').innerText = d.shift.total_revenue + ' ₽';
+        document.getElementById('sh-orders').innerText = d.shift.total_orders;
+        document.getElementById('sh-cash').innerText = d.shift.total_cash + ' ₽';
+        document.getElementById('sh-card').innerText = d.shift.total_card + ' ₽';
+        document.getElementById('sh-open-cash').innerText = d.shift.opening_cash + ' ₽';
+        document.getElementById('sh-in').innerText = '+' + d.shift.cash_in + ' ₽';
+        document.getElementById('sh-out').innerText = '-' + d.shift.cash_out + ' ₽';
+        document.getElementById('sh-expected').innerText = d.shift.expected_cash + ' ₽';
+        document.getElementById('actual_cash_input').value = d.shift.expected_cash;
+        calcShiftDiscrepancy();
+        document.getElementById('shiftControlModal').style.display = 'flex';
+        if(focusClose) setTimeout(() => document.getElementById('actual_cash_input')?.select(), 100);
+    });
+}
+
+function fillExactExpectedCash(){
+    if(!currentShiftMetrics) return;
+    document.getElementById('actual_cash_input').value = currentShiftMetrics.expected_cash;
+    calcShiftDiscrepancy();
+}
+
+function calcShiftDiscrepancy(){
+    if(!currentShiftMetrics) return;
+    const actual = parseInt(document.getElementById('actual_cash_input').value) || 0;
+    const diff = actual - currentShiftMetrics.expected_cash;
+    const el = document.getElementById('discrepancy-preview');
+    if(diff === 0){
+        el.style.color = '#10b981';
+        el.innerText = '✓ Расхождение: 0 ₽ (Сумма в ящике идеально сходится)';
+    } else if(diff > 0){
+        el.style.color = '#fbbf24';
+        el.innerText = `! Излишек в кассе: +${diff} ₽`;
+    } else {
+        el.style.color = '#ef4444';
+        el.innerText = ` Недостача в кассе: ${diff} ₽`;
+    }
+}
+
+function printCurrentXReport(){
+    if(currentShiftMetrics){
+        window.open('/shift/z_report/' + currentShiftMetrics.id, '_blank');
+    }
+}
+
+function confirmCloseShift(){
+    if(!currentShiftMetrics) return;
+    const actual_cash = parseInt(document.getElementById('actual_cash_input').value) || 0;
+    if(!confirm(`Закрыть кассовую смену #${currentShiftMetrics.id} и распечатать Z-отчёт?`)) return;
+    fetch('/shift/close', {
+        method: 'POST',
+        headers: {'Content-Type': 'application/json'},
+        body: JSON.stringify({ actual_cash })
+    }).then(r=>r.json()).then(d=>{
+        if(d.success){
+            window.open(d.z_report_url, '_blank');
+            window.location.reload();
+        } else alert(d.error || 'Ошибка закрытия смены');
+    });
+}
+</script>
+
+</body></html>

@@ -1,0 +1,245 @@
+<!DOCTYPE html><html lang="ru"><head><meta name="csrf-token" content="{{ csrf_token() }}"><script src="/static/security.js"></script><meta charset="UTF-8">
+<title>Чат — Креветка</title>
+<!-- PWA для отдельного приложения -->
+<link rel="manifest" href="/chat_manifest.json">
+<meta name="theme-color" content="#0a0a0a">
+<link rel="apple-touch-icon" href="/static/icon-192.png">
+<meta name="apple-mobile-web-app-capable" content="yes">
+<meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
+<style>
+:root {
+    --bg-main: #0a0a0a; --bg-panel: #151515; --bg-card: #1c1c1e; --bg-input: #151515;
+    --text-main: #ffffff; --text-muted: #888888; --border: #333333;
+    --accent: #ff7a00; --accent-text: #000000; --btn-grey: #333333;
+    --msg-mine: #ff7a00; --msg-mine-text: #000000;
+    --msg-other: #2a2a2a; --msg-other-text: #ffffff;
+}
+body.light-theme {
+    --bg-main: #e9ecef; --bg-panel: #ffffff; --bg-card: #ffffff; --bg-input: #ffffff;
+    --text-main: #212529; --text-muted: #6c757d; --border: #ced4da;
+    --accent: #ff7a00; --accent-text: #ffffff; --btn-grey: #dee2e6;
+    --msg-mine: #ff7a00; --msg-mine-text: #ffffff;
+    --msg-other: #ffffff; --msg-other-text: #212529;
+}
+body{font-family:-apple-system,sans-serif;background:var(--bg-main);color:var(--text-main);margin:0;display:flex;flex-direction:column;height:100vh; transition: background 0.3s, color 0.3s;}
+.topbar{display:flex;justify-content:space-between;align-items:center;padding:15px 20px;background:var(--bg-panel);border-bottom:1px solid var(--border); z-index: 10;}
+h1{margin:0;color:var(--accent);font-size:20px;}
+a{color:var(--accent);text-decoration:none;font-weight:bold;}
+
+.chat-container{flex:1;overflow-y:auto;padding:20px;display:flex;flex-direction:column;gap:15px; background: var(--bg-main);}
+.msg-row{display:flex; width: 100%;}
+.msg-row.mine{justify-content: flex-end;}
+.msg-row.other{justify-content: flex-start;}
+
+.avatar {
+    width: 35px; height: 35px; border-radius: 50%; display: flex; align-items: center; justify-content: center;
+    font-weight: bold; font-size: 16px; color: #fff; margin-right: 10px; flex-shrink: 0;
+}
+.msg-content { display: flex; flex-direction: column; max-width: 70%; }
+.msg { padding: 10px 15px; border-radius: 15px; font-size: 15px; line-height: 1.4; box-shadow:0 1px 2px rgba(0,0,0,0.1); word-break: break-word; }
+.msg.mine { background: var(--msg-mine); color: var(--msg-mine-text); border-bottom-right-radius: 4px; }
+.msg.other { background: var(--msg-other); color: var(--msg-other-text); border-bottom-left-radius: 4px; border: 1px solid var(--border); }
+
+.msg-meta { display: flex; justify-content: flex-end; align-items: center; gap: 5px; font-size: 11px; margin-top: 4px; opacity: 0.7; }
+.msg-author { font-size: 12px; margin-bottom: 4px; color: var(--text-muted); font-weight: bold;}
+
+.typing-indicator { font-size: 13px; color: var(--text-muted); padding: 0 20px 10px 20px; height: 20px; font-style: italic; }
+
+.input-area{padding:10px 20px;background:var(--bg-panel);border-top:1px solid var(--border);display:flex;gap:10px; align-items: center;}
+input[type="text"]{flex:1;padding:12px 15px;border-radius:20px;border:1px solid var(--border);background:var(--bg-input);color:var(--text-main);font-size:15px;outline:none;}
+input[type="text"]:focus{border-color:var(--accent);}
+button.send-btn{background:var(--accent);color:var(--accent-text);border:none;width:45px;height:45px;border-radius:50%;font-weight:bold;cursor:pointer;font-size:18px;display:flex;align-items:center;justify-content:center;}
+button.send-btn:hover{opacity:0.9;}
+.theme-btn{background:var(--bg-card);color:var(--text-main);border:1px solid var(--border);padding:6px 10px;border-radius:8px;cursor:pointer;font-size:16px;margin-left:15px;}
+.btn-clear{background:#ff453a;color:#fff;border:none;padding:6px 12px;border-radius:8px;font-size:13px;cursor:pointer;margin-left:10px;}
+.btn-sound{background:#30d158;color:#000;border:none;padding:6px 12px;border-radius:8px;font-size:13px;font-weight:bold;cursor:pointer;margin-left:10px; display:none;}
+.btn-sound.off{background:#555;color:#fff;}
+
+/* Генератор случайных цветов для аватарок */
+.bg-1 { background: #e74c3c; } .bg-2 { background: #3498db; } .bg-3 { background: #2ecc71; }
+.bg-4 { background: #9b59b6; } .bg-5 { background: #f1c40f; } .bg-6 { background: #e67e22; }
+</style>
+<script>
+    if(localStorage.getItem('theme') === 'light') { document.documentElement.classList.add('light-theme'); }
+</script>
+<link rel="stylesheet" href="/static/pro_style.css">
+</head><body>
+
+<div class="topbar">
+    <div style="display:flex; align-items:center;">
+        <h1>💬 Чат</h1>
+        <button id="sound-btn" class="btn-sound off" onclick="toggleSound()">🔕 Включить звук</button>
+        <button class="btn-clear" onclick="clearChat()">Очистить</button>
+    </div>
+    <div style="display:flex; align-items:center;">
+        <a href="javascript:history.back()">← Назад</a>
+        <button class="theme-btn" onclick="toggleTheme()" id="theme-btn">🌙</button>
+    </div>
+</div>
+
+<div class="chat-container" id="chat-box"></div>
+<div class="typing-indicator" id="typing-indicator"></div>
+
+<div class="input-area">
+    <input type="text" id="msg-input" placeholder="Написать сообщение..." oninput="sendTyping()" onkeypress="handleEnter(event)">
+    <button class="send-btn" onclick="sendMessage()">➤</button>
+</div>
+
+<script>
+function toggleTheme() {
+    document.body.classList.toggle('light-theme');
+    const isLight = document.body.classList.contains('light-theme');
+    localStorage.setItem('theme', isLight ? 'light' : 'dark');
+    document.getElementById('theme-btn').innerText = isLight ? '🌙' : '☀️';
+}
+document.addEventListener('DOMContentLoaded', () => {
+    if(localStorage.getItem('theme') === 'light') { document.body.classList.add('light-theme'); document.getElementById('theme-btn').innerText = '🌙'; } 
+    else { document.getElementById('theme-btn').innerText = '☀️'; }
+});
+
+const MY_NAME = "{{ session['username'] }}";
+let lastMsgId = 0;
+let isFirstLoad = true;
+let typingTimeout = null;
+
+// --- ЛОГИКА ЗВУКА ---
+let soundEnabled = false;
+let audioCtx = null;
+
+function toggleSound() {
+    if (!soundEnabled) {
+        // Разблокируем аудио-контекст (требование браузеров)
+        if (!audioCtx) audioCtx = new (window.AudioContext || window.webkitAudioContext)();
+        if (audioCtx.state === 'suspended') audioCtx.resume();
+        soundEnabled = true;
+        document.getElementById('sound-btn').innerText = '🔔 Звук включен';
+        document.getElementById('sound-btn').classList.remove('off');
+        // Проигрываем тестовый звук
+        playBeep();
+    } else {
+        soundEnabled = false;
+        document.getElementById('sound-btn').innerText = '🔕 Включить звук';
+        document.getElementById('sound-btn').classList.add('off');
+    }
+}
+
+function playBeep() {
+    if (!soundEnabled || !audioCtx) return;
+    try {
+        const osc = audioCtx.createOscillator();
+        const gain = audioCtx.createGain();
+        osc.connect(gain);
+        gain.connect(audioCtx.destination);
+        
+        osc.type = 'square'; // Квадратная волна звучит резче и громче
+        osc.frequency.setValueAtTime(800, audioCtx.currentTime);
+        osc.frequency.setValueAtTime(1200, audioCtx.currentTime + 0.1);
+        
+        gain.gain.setValueAtTime(1, audioCtx.currentTime); // Максимальная громкость
+        gain.gain.exponentialRampToValueAtTime(0.01, audioCtx.currentTime + 0.4);
+        
+        osc.start();
+        osc.stop(audioCtx.currentTime + 0.4);
+    } catch(e) { console.log("Audio error:", e); }
+}
+// --------------------
+
+function getAvatarClass(name) {
+    let hash = 0;
+    for (let i = 0; i < name.length; i++) { hash = name.charCodeAt(i) + ((hash << 5) - hash); }
+    let color = Math.abs(hash) % 6 + 1;
+    return `bg-${color}`;
+}
+
+function loadMessages() {
+    fetch('/api/chat/get').then(r=>r.json()).then(data=>{
+        const msgs = data.messages;
+        const typers = data.typing;
+        const box = document.getElementById('chat-box');
+        let isScrolledToBottom = box.scrollHeight - box.clientHeight <= box.scrollTop + 50;
+        
+        // Проверка на новое сообщение (для звука)
+        if (msgs.length > 0) {
+            const latestMsg = msgs[msgs.length - 1];
+            if (!isFirstLoad && latestMsg.id > lastMsgId && latestMsg.sender_name !== MY_NAME) {
+                playBeep();
+            }
+            lastMsgId = latestMsg.id;
+        }
+        isFirstLoad = false;
+        
+        box.innerHTML = '';
+        msgs.forEach(m => {
+            const isMine = m.sender_name === MY_NAME;
+            
+            const row = document.createElement('div');
+            row.className = `msg-row ${isMine ? 'mine' : 'other'}`;
+            
+            let avatarHtml = '';
+            if (!isMine) {
+                const initial = m.sender_name.charAt(0).toUpperCase();
+                avatarHtml = `<div class="avatar ${getAvatarClass(m.sender_name)}">${initial}</div>`;
+            }
+            
+            const textDiv = document.createElement('div');
+            textDiv.textContent = m.text;
+            
+            const checkmarks = isMine ? `<span style="font-size:12px; margin-left:5px; color:${m.is_read ? '#30d158' : 'var(--msg-mine-text)'}">${m.is_read ? '✓✓' : '✓'}</span>` : '';
+            
+            row.innerHTML = `
+                ${avatarHtml}
+                <div class="msg-content">
+                    ${!isMine ? `<div class="msg-author">${m.sender_name}</div>` : ''}
+                    <div class="msg ${isMine ? 'mine' : 'other'}"></div>
+                    <div class="msg-meta">${m.created_at} ${checkmarks}</div>
+                </div>
+            `;
+            row.querySelector('.msg').appendChild(textDiv);
+            box.appendChild(row);
+        });
+        
+        const tInd = document.getElementById('typing-indicator');
+        if (typers.length > 0) {
+            tInd.innerText = `${typers.join(', ')} печатает...`;
+        } else {
+            tInd.innerText = '';
+        }
+        
+        if (msgs.length > 0 && (isScrolledToBottom || lastMsgId !== msgs[msgs.length-1].id)) {
+            box.scrollTop = box.scrollHeight;
+        }
+    });
+}
+
+function sendMessage() {
+    const input = document.getElementById('msg-input');
+    const text = input.value.trim();
+    if (!text) return;
+    
+    input.value = '';
+    fetch('/api/chat/send', {
+        method: 'POST',
+        headers: {'Content-Type': 'application/json'},
+        body: JSON.stringify({text: text})
+    }).then(() => loadMessages());
+}
+
+function sendTyping() {
+    if (typingTimeout) return;
+    fetch('/api/chat/typing', {method: 'POST'});
+    typingTimeout = setTimeout(() => { typingTimeout = null; }, 2000);
+}
+
+function handleEnter(e) {
+    if (e.key === 'Enter') sendMessage();
+}
+
+function clearChat() {
+    if(!confirm('Вы уверены, что хотите удалить все сообщения?')) return;
+    fetch('/api/chat/clear', {method: 'POST'}).then(() => loadMessages());
+}
+
+setInterval(loadMessages, 2000);
+loadMessages();
+</script>
+</body></html>

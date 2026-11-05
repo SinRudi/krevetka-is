@@ -1,0 +1,70 @@
+<!DOCTYPE html><html lang="ru"><head><meta charset="UTF-8">
+<title>Карта зон доставки — г. Инта</title>
+<link rel="stylesheet" href="https://unpkg.com/leaflet@1.9.4/dist/leaflet.css" />
+<link rel="stylesheet" href="https://unpkg.com/leaflet-draw@1.0.4/dist/leaflet.draw.css" />
+<script src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js"></script>
+<script src="https://unpkg.com/leaflet-draw@1.0.4/dist/leaflet.draw.js"></script>
+<style>
+body { margin:0; padding:20px 30px; }
+.container { display:flex; gap:22px; height: calc(100vh - 150px); }
+.map-wrapper { flex:2.2; border-radius:18px; overflow:hidden; border:2px solid rgba(255,107,0,0.3); }
+#map { height:100%; width:100%; }
+.sidebar { flex:1; padding:22px; overflow-y:auto; max-width:380px; }
+.field { margin-bottom:14px; }
+.field label { display:block; margin-bottom:6px; color:#94a3b8; font-size:13px; font-weight:600; }
+.zone-card { padding:14px 16px; margin-bottom:10px; display:flex; justify-content:space-between; align-items:center; border-left: 5px solid #ff6b00 !important; }
+</style></head><body>
+<div class="page-nav-header"><div class="page-nav-left"><a href="/admin" class="btn-back-nav">← Назад в Управление</a><a href="/" class="btn-back-nav">← В Кассу</a><h1 style="margin:0;font-size:20px; color:#ff6b00; font-size:26px; font-weight:900;"> Гео-зоны доставки и трекинг курьеров ({{ brand_city }})</h1></div></div>
+<div class="container">
+    <div class="map-wrapper"><div id="map"></div></div>
+    <div class="sidebar">
+        <h2 style="margin-top:0; color:#ff6b00; font-size:19px;">+ Новая зона доставки</h2>
+        <div class="field"><label>Название района</label><input type="text" id="z-name" placeholder="Напр. Центр / Западный" style="width:100%;"></div>
+        <div class="field"><label>Тариф доставки (₽)</label><input type="number" id="z-price" value="150" style="width:100%;"></div>
+        <div class="field"><label>Цвет полигона</label><input type="color" id="z-color" value="#10b981" style="width:100%; height:42px; padding:3px;"></div>
+        <button class="btn btn-ready" style="width:100%; padding:13px; cursor:pointer;" onclick="saveZone()"> Сохранить зону</button>
+        <h3 style="margin-top:25px;"> Активные тарифы ({{ brand_city }})</h3>
+        <div id="zones-list"></div>
+    </div>
+</div>
+<script>
+let map = L.map('map').setView([{{ map_lat }}, {{ map_lng }}], 13);
+L.tileLayer('https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png').addTo(map);
+let drawnItems = new L.FeatureGroup(); map.addLayer(drawnItems);
+let currentPolygonData = null;
+let drawControl = new L.Control.Draw({
+    draw: { polygon: { shapeOptions: { color: '#ff6b00', fillColor: '#ff6b00', fillOpacity: 0.35 } }, polyline: false, rectangle: true, circle: false, marker: false, circlemarker: false },
+    edit: { featureGroup: drawnItems, remove: false }
+});
+map.addControl(drawControl);
+map.on(L.Draw.Event.CREATED, function (e) {
+    drawnItems.clearLayers(); drawnItems.addLayer(e.layer);
+    currentPolygonData = JSON.stringify(e.layer.getLatLngs()[0].map(p => [p.lat, p.lng]));
+    document.getElementById('z-name').focus();
+});
+function loadZones() {
+    fetch('/api/zones').then(r=>r.json()).then(data => {
+        const list = document.getElementById('zones-list'); list.innerHTML = '';
+        map.eachLayer((layer) => { if(layer instanceof L.Polygon && !drawnItems.hasLayer(layer)) map.removeLayer(layer); });
+        data.forEach(z => {
+            let col = z.color || '#ff6b00';
+            if(z.polygon_data) {
+                try { L.polygon(JSON.parse(z.polygon_data), { color: col, fillColor: col, fillOpacity: 0.28 }).addTo(map).bindPopup(`<b>${z.name}</b><br>Доставка: ${z.price} ₽`); } catch(e) {}
+            }
+            const div = document.createElement('div'); div.className = 'zone-card';
+            div.style.setProperty('border-left-color', col, 'important');
+            div.innerHTML = `<div><b>${z.name}</b><br><span style="color:${col};font-weight:800;">${z.price} ₽</span></div><button class="btn btn-danger" style="padding:6px 11px;" onclick="deleteZone(${z.id})">✖</button>`;
+            list.appendChild(div);
+        });
+    });
+}
+function saveZone() {
+    if(!currentPolygonData) return alert('Нарисуйте полигон зоны на карте!');
+    fetch('/api/zones', {
+        method: 'POST', headers: {'Content-Type': 'application/json'},
+        body: JSON.stringify({ name: document.getElementById('z-name').value || 'Зона', price: document.getElementById('z-price').value || 0, color: document.getElementById('z-color').value, polygon_data: currentPolygonData })
+    }).then(r=>r.json()).then(d=>{ if(d.success) { drawnItems.clearLayers(); currentPolygonData = null; loadZones(); } });
+}
+function deleteZone(id) { if(confirm('Удалить зону?')) fetch('/api/zones/delete/' + id, {method: 'POST'}).then(()=>loadZones()); }
+loadZones();
+</script></body></html>

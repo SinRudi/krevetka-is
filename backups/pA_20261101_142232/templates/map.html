@@ -1,0 +1,175 @@
+<!DOCTYPE html><html lang="ru"><head><meta name="csrf-token" content="{{ csrf_token() }}"><script src="/static/security.js"></script><meta charset="UTF-8">
+<title>Карта Инты и Зоны доставки — Креветка</title>
+<link rel="stylesheet" href="https://unpkg.com/leaflet@1.9.4/dist/leaflet.css" />
+<link rel="stylesheet" href="https://unpkg.com/leaflet-draw@1.0.4/dist/leaflet.draw.css" />
+<link rel="stylesheet" href="/static/pro_style.css">
+<script src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js"></script>
+<script src="https://unpkg.com/leaflet-draw@1.0.4/dist/leaflet.draw.js"></script>
+<style>
+body{margin:0;padding:20px;height:100vh;box-sizing:border-box;display:flex;flex-direction:column}
+.topbar{display:flex;justify-content:space-between;align-items:center;margin-bottom:15px}
+h1{margin:0;color:var(--accent);font-size:24px}
+a{color:var(--accent);text-decoration:none;font-weight:bold}
+.container{display:flex;gap:20px;flex:1;min-height:0}
+.map-wrapper{flex:2.5;border-radius:18px;overflow:hidden;border:1px solid var(--border);box-shadow:var(--shadow-soft);position:relative}
+#map{height:100%;width:100%}
+.sidebar{flex:1;padding:20px;overflow-y:auto;max-width:360px;display:flex;flex-direction:column;gap:12px}
+h2{margin:0;color:var(--accent);font-size:18px}
+.field label{display:block;margin-bottom:5px;color:var(--text-muted);font-size:13px}
+.field input{width:100%;box-sizing:border-box;padding:10px}
+.btn{background:var(--accent);color:#fff;border:none;padding:11px 15px;cursor:pointer;width:100%;font-size:14px}
+.zone-card{background:var(--bg-card);padding:12px 15px;border-radius:12px;margin-bottom:8px;border:1px solid var(--border);display:flex;justify-content:space-between;align-items:center}
+.btn-danger{background:#ef4444;color:#fff;padding:6px 10px;font-size:12px;width:auto;border:none;border-radius:8px;cursor:pointer}
+.recenter-btn{position:absolute;top:12px;right:12px;z-index:1000;background:var(--bg-panel);color:var(--text-main);border:1px solid var(--border);padding:8px 14px;border-radius:10px;cursor:pointer;font-weight:bold;box-shadow:0 4px 12px rgba(0,0,0,0.3)}
+.recenter-btn:hover{border-color:var(--accent)}
+</style>
+<script>if(localStorage.getItem('theme') === 'light') document.documentElement.classList.add('light-theme');</script>
+</head><body>
+
+<div class="topbar">
+    <h1>🗺️ Карта ({{ brand.brand_city }}) — Зоны доставки и Курьеры</h1>
+    <div style="display:flex;gap:15px;align-items:center">
+        <a href="/admin">← В дашборд</a>
+        <a href="/">В кассу</a>
+    </div>
+</div>
+
+<div class="container">
+    <div class="map-wrapper">
+        <button class="recenter-btn" onclick="centerInta()">📍 Центр ({{ brand.brand_city }})</button>
+        <div id="map"></div>
+    </div>
+    <div class="sidebar">
+        <h2>➕ Новая зона доставки</h2>
+        <p style="font-size:12px;color:var(--text-muted);margin:0;line-height:1.4">Нажмите на значок многоугольника ⬠ слева на карте, обведите район Инты (например: Центр, Южный, Восточный, Станция) и замкните контур.</p>
+        <div class="field"><label>Название района / зоны</label><input type="text" id="z-name" placeholder="Напр.: Центр / Заречный"></div>
+        <div class="field"><label>Стоимость доставки (₽)</label><input type="number" id="z-price" placeholder="Напр.: 100"></div>
+        <button class="btn" style="background:#10b981" onclick="saveZone()">💾 Сохранить зону</button>
+        <hr style="border:none;border-top:1px solid var(--border);margin:8px 0">
+        <h2>📌 Активные зоны</h2>
+        <div id="zones-list" style="flex:1;overflow-y:auto"></div>
+<script>
+function loadDeliveryRoute(){
+    fetch('/api/delivery_route').then(r=>r.json()).then(points => {
+        if(points.length === 0) return alert('Нет активных заказов для построения маршрута!');
+        let latlngs = [[66.0350, 60.1450]]; // Стартовая точка (ресторан)
+        points.forEach(p => {
+            latlngs.push([p.lat, p.lng]);
+            L.marker([p.lat, p.lng]).addTo(map)
+              .bindPopup(`<b>Заказ #${p.id}</b><br>Адрес: ${p.address}<br>Сумма: ${p.total} ₽`);
+        });
+        latlngs.push([66.0350, 60.1450]); // Возврат в ресторан
+        let polyline = L.polyline(latlngs, {color: '#10b981', weight: 4, dashArray: '8, 8'}).addTo(map);
+        map.fitBounds(polyline.getBounds());
+    });
+}
+</script>
+<button class="btn" style="background:#10b981;margin-top:10px" onclick="loadDeliveryRoute()">🚗 Построить оптимальный маршрут курьеру</button>
+
+    </div>
+</div>
+
+<script>
+// КООРДИНАТЫ ГОРОДА ИНТА (Республика Коми)
+const INTA_COORDS = [{{ brand.map_lat }}, {{ brand.map_lng }}];
+const INTA_ZOOM = 13;
+
+let map = L.map('map').setView(INTA_COORDS, INTA_ZOOM);
+L.tileLayer('https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png', {
+    attribution: '&copy; OpenStreetMap | г. Инта'
+}).addTo(map);
+
+function centerInta() {
+    map.setView(INTA_COORDS, INTA_ZOOM);
+}
+
+let drawnItems = new L.FeatureGroup();
+map.addLayer(drawnItems);
+let currentPolygonData = null;
+
+let drawControl = new L.Control.Draw({
+    draw: {
+        polygon: { shapeOptions: { color: '#ff7a00', fillColor: '#ff7a00', fillOpacity: 0.28 } },
+        polyline: false, rect: false, circle: false, marker: false, circlemarker: false
+    },
+    edit: { featureGroup: drawnItems, remove: false }
+});
+map.addControl(drawControl);
+
+map.on(L.Draw.Event.CREATED, function (e) {
+    drawnItems.clearLayers();
+    drawnItems.addLayer(e.layer);
+    let latlngs = e.layer.getLatLngs()[0];
+    currentPolygonData = JSON.stringify(latlngs.map(p => [p.lat, p.lng]));
+    document.getElementById('z-name').focus();
+});
+
+function loadZones() {
+    fetch('/api/zones/full').then(r=>r.json()).then(data => {
+        const list = document.getElementById('zones-list');
+        list.innerHTML = '';
+        map.eachLayer((layer) => {
+            if(layer instanceof L.Polygon && !drawnItems.hasLayer(layer)) map.removeLayer(layer);
+        });
+        if(data.length === 0) {
+            list.innerHTML = '<div style="color:var(--text-muted);font-size:13px">Зоны еще не созданы</div>';
+        }
+        data.forEach(z => {
+            if(z.polygon_data) {
+                try {
+                    let poly = L.polygon(JSON.parse(z.polygon_data), { color: '#3b82f6', fillColor: '#3b82f6', fillOpacity: 0.22 }).addTo(map);
+                    poly.bindPopup(`<b>${z.name}</b><br>Доставка: ${z.price} ₽`);
+                } catch(e) {}
+            }
+            const div = document.createElement('div');
+            div.className = 'zone-card';
+            div.innerHTML = `<div><b>${z.name}</b><br><span style="color:var(--accent);font-weight:bold">${z.price} ₽</span></div><button class="btn-danger" onclick="deleteZone(${z.id})">✖</button>`;
+            list.appendChild(div);
+        });
+    });
+}
+
+function saveZone() {
+    const name = document.getElementById('z-name').value.trim();
+    const price = document.getElementById('z-price').value;
+    if(!name || !price) return alert('Укажите название района и стоимость!');
+    if(!currentPolygonData) return alert('Сначала обведите зону на карте Инты!');
+    fetch('/api/zones', {
+        method: 'POST',
+        headers: {'Content-Type': 'application/json'},
+        body: JSON.stringify({name: name, price: price, polygon_data: currentPolygonData})
+    }).then(r=>r.json()).then(d=>{
+        if(d.success) {
+            drawnItems.clearLayers();
+            currentPolygonData = null;
+            document.getElementById('z-name').value = '';
+            document.getElementById('z-price').value = '';
+            loadZones();
+        }
+    });
+}
+function deleteZone(id) {
+    if(!confirm('Удалить эту зону доставки?')) return;
+    fetch('/api/zones/delete/' + id, {method: 'POST'}).then(()=>loadZones());
+}
+
+let courierMarkers = {};
+function loadCouriers() {
+    fetch('/api/couriers/locations').then(r=>r.json()).then(data => {
+        data.forEach(c => {
+            if(courierMarkers[c.username]) {
+                courierMarkers[c.username].setLatLng([c.lat, c.lng]);
+                courierMarkers[c.username].getPopup().setContent(`🛵 <b>${c.username}</b><br>Обновлено: ${c.updated_at}`);
+            } else {
+                courierMarkers[c.username] = L.marker([c.lat, c.lng]).addTo(map)
+                    .bindPopup(`🛵 Курьер: <b>${c.username}</b><br>Обновлено: ${c.updated_at}`);
+            }
+        });
+    });
+}
+
+loadZones();
+setInterval(loadCouriers, 5000);
+loadCouriers();
+</script>
+</body></html>

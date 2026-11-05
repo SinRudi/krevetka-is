@@ -1,0 +1,594 @@
+from flask import Flask, render_template, request, jsonify, g, session, redirect, url_for, flash, make_response, send_from_directory, send_file
+from datetime import datetime, timedelta
+from functools import wraps
+from werkzeug.security import generate_password_hash, check_password_hash
+import sqlite3, os, socket, uuid, io, openpyxl, time
+
+app = Flask(__name__)
+app.secret_key = os.environ.get('SUSHI_SECRET', 'super-secret-key-change-me')
+DB_PATH = os.path.join(os.path.dirname(os.path.abspath(__file__)), 'sushi.db')
+UPLOAD_FOLDER = os.path.join(os.path.dirname(os.path.abspath(__file__)), 'static', 'uploads')
+app.config['UPLOAD_FOLDER'] = UPLOAD_FOLDER
+os.makedirs(UPLOAD_FOLDER, exist_ok=True)
+
+typing_users = {}
+
+def get_db():
+    if 'db' not in g:
+        g.db = sqlite3.connect(DB_PATH)
+        g.db.row_factory = sqlite3.Row
+        g.db.execute("PRAGMA foreign_keys = ON")
+    return g.db
+
+@app.teardown_appcontext
+def close_db(exception):
+    db = g.pop('db', None)
+    if db is not None: db.close()
+
+@app.route('/manifest.json')
+def manifest(): return send_from_directory(os.path.dirname(os.path.abspath(__file__)), 'manifest.json')
+@app.route('/chat_manifest.json')
+def chat_manifest(): return send_from_directory(os.path.dirname(os.path.abspath(__file__)), 'chat_manifest.json')
+@app.route('/sw.js')
+def service_worker(): return send_from_directory(os.path.dirname(os.path.abspath(__file__)), 'sw.js')
+
+def get_setting(key):
+    row = get_db().execute("SELECT value FROM settings WHERE key=?", (key,)).fetchone()
+    return row['value'] if row else None
+
+def set_setting(key, value):
+    db = get_db()
+    db.execute("INSERT INTO settings (key, value) VALUES (?,?) ON CONFLICT(key) DO UPDATE SET value=?", (key, value, value))
+    db.commit()
+
+def is_shop_open():
+    status = get_setting('shop_status') or 'auto'
+    if status == 'closed': return False
+    if status == 'open': return True
+    now = datetime.now().time()
+    return datetime.strptime("10:00", "%H:%M").time() <= now <= datetime.strptime("21:30", "%H:%M").time()
+
+def init_db():
+    db = sqlite3.connect(DB_PATH)
+    db.executescript("""
+    CREATE TABLE IF NOT EXISTS settings (key TEXT PRIMARY KEY, value TEXT);
+    CREATE TABLE IF NOT EXISTS banners (id INTEGER PRIMARY KEY AUTOINCREMENT, image TEXT NOT NULL, title TEXT);
+    CREATE TABLE IF NOT EXISTS messages (id INTEGER PRIMARY KEY AUTOINCREMENT, sender_id INTEGER, sender_name TEXT, text TEXT, created_at TEXT, is_read INTEGER DEFAULT 0);
+    CREATE TABLE IF NOT EXISTS courier_locations (courier_id INTEGER PRIMARY KEY, lat REAL, lng REAL, updated_at TEXT);
+    CREATE TABLE IF NOT EXISTS menu (id INTEGER PRIMARY KEY AUTOINCREMENT, name TEXT NOT NULL, price INTEGER NOT NULL, category TEXT NOT NULL, available INTEGER NOT NULL DEFAULT 1, stop_list INTEGER DEFAULT 0, image TEXT DEFAULT '', composition TEXT DEFAULT '', modifiers TEXT DEFAULT '', sort_weight INTEGER DEFAULT 0);
+    CREATE TABLE IF NOT EXISTS orders (id INTEGER PRIMARY KEY AUTOINCREMENT, created_at TEXT NOT NULL, status TEXT NOT NULL DEFAULT 'new', total INTEGER NOT NULL, cost REAL DEFAULT 0, address TEXT, phone TEXT, comment TEXT, shift_id INTEGER, cashier_id INTEGER DEFAULT 0, source TEXT DEFAULT 'Касса', payment_method TEXT DEFAULT 'не указан', payment_cash INTEGER DEFAULT 0, payment_card INTEGER DEFAULT 0, change_from INTEGER DEFAULT 0, delivery_type TEXT DEFAULT 'доставка', scheduled_time TEXT, cancel_reason TEXT DEFAULT '', courier_name TEXT DEFAULT '', discount INTEGER DEFAULT 0, discount_type TEXT DEFAULT 'rub', delivery_zone TEXT DEFAULT '', cook_start_time TEXT, cook_end_time TEXT, promo_code TEXT DEFAULT '', rating INTEGER DEFAULT 0, review_text TEXT DEFAULT '');
+    CREATE TABLE IF NOT EXISTS order_items (id INTEGER PRIMARY KEY AUTOINCREMENT, order_id INTEGER NOT NULL, menu_id INTEGER, name TEXT NOT NULL, price INTEGER NOT NULL, qty INTEGER NOT NULL DEFAULT 1, modifiers TEXT DEFAULT '', FOREIGN KEY(order_id) REFERENCES orders(id) ON DELETE CASCADE);
+    CREATE TABLE IF NOT EXISTS users (id INTEGER PRIMARY KEY AUTOINCREMENT, username TEXT UNIQUE NOT NULL, password_hash TEXT NOT NULL, role TEXT NOT NULL DEFAULT 'cashier', created_at TEXT NOT NULL);
+    CREATE TABLE IF NOT EXISTS shifts (id INTEGER PRIMARY KEY AUTOINCREMENT, opened_at TEXT NOT NULL, closed_at TEXT, opened_by INTEGER, closed_by INTEGER, total_orders INTEGER DEFAULT 0, total_revenue INTEGER DEFAULT 0, status TEXT NOT NULL DEFAULT 'open', total_cash INTEGER DEFAULT 0, total_card INTEGER DEFAULT 0);
+    CREATE TABLE IF NOT EXISTS clients (id INTEGER PRIMARY KEY AUTOINCREMENT, phone TEXT UNIQUE NOT NULL, name TEXT, bonuses INTEGER DEFAULT 0, total_spent INTEGER DEFAULT 0, orders_count INTEGER DEFAULT 0, last_order_at TEXT, level TEXT DEFAULT 'bronze');
+    CREATE TABLE IF NOT EXISTS zones (id INTEGER PRIMARY KEY AUTOINCREMENT, name TEXT NOT NULL, price INTEGER NOT NULL, polygon_data TEXT DEFAULT '');
+    CREATE TABLE IF NOT EXISTS promocodes (id INTEGER PRIMARY KEY AUTOINCREMENT, code TEXT UNIQUE NOT NULL, discount_type TEXT NOT NULL DEFAULT 'percent', discount_value INTEGER NOT NULL, is_active INTEGER DEFAULT 1);
+    CREATE TABLE IF NOT EXISTS ingredients (id INTEGER PRIMARY KEY AUTOINCREMENT, name TEXT NOT NULL, stock REAL DEFAULT 0, unit TEXT NOT NULL, cost_price REAL DEFAULT 0);
+    CREATE TABLE IF NOT EXISTS recipes (menu_id INTEGER, ingredient_id INTEGER, amount REAL NOT NULL, PRIMARY KEY (menu_id, ingredient_id), FOREIGN KEY(menu_id) REFERENCES menu(id) ON DELETE CASCADE, FOREIGN KEY(ingredient_id) REFERENCES ingredients(id) ON DELETE CASCADE);
+    """)
+    
+    if db.execute("SELECT COUNT(*) FROM settings").fetchone()[0] == 0: db.execute("INSERT INTO settings (key, value) VALUES ('shop_status', 'auto')")
+    if db.execute("SELECT COUNT(*) FROM users").fetchone()[0] == 0:
+        now = datetime.now().strftime("%Y-%m-%d %H:%M:%S")
+        db.executemany("INSERT INTO users (username, password_hash, role, created_at) VALUES (?,?,?,?)", [
+            ("admin", generate_password_hash("admin"), "admin", now), ("cashier", generate_password_hash("cashier"), "cashier", now),
+            ("kitchen", generate_password_hash("kitchen"), "kitchen", now), ("courier", generate_password_hash("courier"), "courier", now),
+        ])
+    if db.execute("SELECT COUNT(*) FROM promocodes").fetchone()[0] == 0: db.execute("INSERT INTO promocodes (code, discount_type, discount_value) VALUES (?,?,?)", ("SUSHI10", "percent", 10))
+    db.commit(); db.close()
+
+def login_required(*roles):
+    def decorator(f):
+        @wraps(f)
+        def wrapper(*args, **kwargs):
+            if 'user_id' not in session: return redirect(url_for('login'))
+            if roles and session.get('role') not in roles: return "Доступ запрещён", 403
+            return f(*args, **kwargs)
+        return wrapper
+    return decorator
+
+@app.route('/login', methods=['GET', 'POST'])
+def login():
+    if request.method == 'POST':
+        user = get_db().execute("SELECT * FROM users WHERE username=?", (request.form.get('username', '').strip(),)).fetchone()
+        if user and check_password_hash(user['password_hash'], request.form.get('password', '')):
+            session.clear(); session['user_id'] = user['id']; session['username'] = user['username']; session['role'] = user['role']
+            return redirect(url_for('index'))
+        flash('Неверный логин или пароль')
+    return render_template('login.html')
+
+@app.route('/logout')
+def logout(): session.clear(); return redirect(url_for('login'))
+
+def get_open_shift(): return get_db().execute("SELECT * FROM shifts WHERE status='open' ORDER BY id DESC LIMIT 1").fetchone()
+
+@app.route('/shift/open', methods=['POST'])
+@login_required('admin', 'cashier')
+def shift_open():
+    if get_open_shift(): return redirect(url_for('index'))
+    get_db().execute("INSERT INTO shifts (opened_at, opened_by, status) VALUES (?,?,?)", (datetime.now().strftime("%Y-%m-%d %H:%M:%S"), session['user_id'], 'open'))
+    get_db().commit(); return redirect(url_for('index'))
+
+@app.route('/shift/close', methods=['POST'])
+@login_required('admin', 'cashier')
+def shift_close():
+    shift = get_open_shift()
+    if not shift: return redirect(url_for('index'))
+    db = get_db()
+    row = db.execute("SELECT COUNT(*) cnt, COALESCE(SUM(total),0) rev, COALESCE(SUM(payment_cash),0) cash, COALESCE(SUM(payment_card),0) card FROM orders WHERE shift_id=? AND status!='cancelled'", (shift['id'],)).fetchone()
+    db.execute("UPDATE shifts SET closed_at=?, closed_by=?, status='closed', total_orders=?, total_revenue=?, total_cash=?, total_card=? WHERE id=?", (datetime.now().strftime("%Y-%m-%d %H:%M:%S"), session['user_id'], row['cnt'], row['rev'], row['cash'], row['card'], shift['id']))
+    db.commit(); return redirect(url_for('reports'))
+
+@app.route('/')
+@login_required()
+def index():
+    if session['role'] == 'kitchen': return redirect(url_for('kitchen'))
+    if session['role'] == 'courier': return redirect(url_for('courier'))
+    db = get_db()
+    return render_template('cashier.html', menu=db.execute("SELECT * FROM menu WHERE available=1 ORDER BY sort_weight DESC, category, name").fetchall(), categories=db.execute("SELECT DISTINCT category FROM menu WHERE available=1 ORDER BY category").fetchall(), zones=db.execute("SELECT * FROM zones").fetchall(), shift=get_open_shift(), role=session['role'], shop_open=is_shop_open())
+
+@app.route('/kitchen')
+@login_required('admin', 'kitchen')
+def kitchen(): return render_template('kitchen.html')
+@app.route('/courier')
+@login_required('admin', 'courier')
+def courier(): return render_template('courier.html')
+@app.route('/reports')
+@login_required('admin', 'cashier')
+def reports(): return render_template('reports.html', shifts=get_db().execute("SELECT * FROM shifts ORDER BY id DESC LIMIT 30").fetchall())
+
+@app.route('/orders')
+@login_required('admin', 'cashier')
+def orders_view():
+    db = get_db()
+    users = db.execute("SELECT id, username FROM users").fetchall()
+    menu = db.execute("SELECT * FROM menu WHERE available=1 ORDER BY category, name").fetchall()
+    return render_template('orders.html', users=users, menu=menu)
+
+@app.route('/receipt/<int:order_id>')
+@login_required()
+def receipt(order_id):
+    db = get_db()
+    order = db.execute("SELECT * FROM orders WHERE id=?", (order_id,)).fetchone()
+    if not order: return "Заказ не найден", 404
+    items = db.execute("SELECT * FROM order_items WHERE order_id=?", (order_id,)).fetchall()
+    return render_template('receipt.html', order=order, items=items)
+
+@app.route('/ticket/<int:order_id>')
+@login_required()
+def ticket(order_id):
+    db = get_db()
+    order = db.execute("SELECT * FROM orders WHERE id=?", (order_id,)).fetchone()
+    if not order: return "Заказ не найден", 404
+    items = db.execute("SELECT * FROM order_items WHERE order_id=?", (order_id,)).fetchall()
+    return render_template('ticket.html', order=order, items=items)
+
+@app.route('/api/order/update_items/<int:order_id>', methods=['POST'])
+@login_required('admin', 'cashier')
+def update_order_items(order_id):
+    data = request.json or {}
+    new_items = data.get('items', [])
+    if not new_items: return jsonify({"error": "В заказе должна остаться хотя бы одна позиция"}), 400
+    db = get_db()
+    order = db.execute("SELECT * FROM orders WHERE id=?", (order_id,)).fetchone()
+    if not order: return jsonify({"error": "Заказ не найден"}), 404
+    if order['status'] in ('done', 'cancelled'): return jsonify({"error": "Нельзя редактировать закрытый заказ"}), 400
+    old_items = db.execute("SELECT menu_id, qty FROM order_items WHERE order_id=?", (order_id,)).fetchall()
+    for oi in old_items:
+        if oi['menu_id']:
+            for r in db.execute("SELECT ingredient_id, amount FROM recipes WHERE menu_id=?", (oi['menu_id'],)).fetchall():
+                db.execute("UPDATE ingredients SET stock = stock + ? WHERE id=?", (r['amount'] * oi['qty'], r['ingredient_id']))
+    err, new_cost = deduct_ingredients(new_items)
+    if err: return jsonify({"error": err}), 400
+    db.execute("DELETE FROM order_items WHERE order_id=?", (order_id,))
+    new_total = 0
+    for i in new_items:
+        qty = int(i.get('qty', 1))
+        price = int(i['price'])
+        new_total += price * qty
+        db.execute("INSERT INTO order_items (order_id, menu_id, name, price, qty, modifiers) VALUES (?,?,?,?,?,?)", (order_id, i.get('id'), i['name'], price, qty, i.get('mods', '')))
+    db.execute("UPDATE orders SET total=?, cost=? WHERE id=?", (new_total, new_cost, order_id))
+    db.commit()
+    return jsonify({"success": True, "new_total": new_total})
+
+@app.route('/api/all_orders')
+@login_required()
+def api_all_orders():
+    db = get_db()
+    date_filter = request.args.get('date', datetime.now().strftime("%Y-%m-%d"))
+    cashier_id = request.args.get('cashier_id'); source = request.args.get('source'); status = request.args.get('status')
+    query = "SELECT o.*, u.username as cashier_name FROM orders o LEFT JOIN users u ON o.cashier_id = u.id WHERE 1=1"
+    params = []
+    if date_filter: query += " AND date(o.created_at) = ?"; params.append(date_filter)
+    if cashier_id: query += " AND o.cashier_id = ?"; params.append(cashier_id)
+    if source: query += " AND o.source = ?"; params.append(source)
+    if status: query += " AND o.status = ?"; params.append(status)
+    query += " ORDER BY o.id DESC"
+    rows = db.execute(query, params).fetchall()
+    result = []; total_sum = 0
+    for r in rows:
+        order = dict(r); order['items'] = [dict(i) for i in db.execute("SELECT * FROM order_items WHERE order_id=?", (r['id'],)).fetchall()]; result.append(order)
+        if order['status'] != 'cancelled': total_sum += order['total']
+    return jsonify({"orders": result, "stats": {"count": len([o for o in result if o['status'] != 'cancelled']), "total": total_sum, "avg": round(total_sum / len([o for o in result if o['status'] != 'cancelled'])) if total_sum > 0 else 0}})
+
+@app.route('/map')
+@login_required('admin', 'cashier')
+def map_view(): return render_template('map.html')
+
+@app.route('/api/zones', methods=['GET', 'POST'])
+@login_required('admin')
+def api_zones():
+    db = get_db()
+    if request.method == 'POST':
+        data = request.json
+        db.execute("INSERT INTO zones (name, price, polygon_data) VALUES (?,?,?)", (data['name'], int(data['price']), data['polygon_data'])); db.commit()
+        return jsonify({"success": True})
+    return jsonify([dict(z) for z in db.execute("SELECT * FROM zones").fetchall()])
+
+@app.route('/api/zones/delete/<int:zone_id>', methods=['POST'])
+@login_required('admin')
+def api_zones_delete(zone_id):
+    db = get_db(); db.execute("DELETE FROM zones WHERE id=?", (zone_id,)); db.commit(); return jsonify({"success": True})
+
+@app.route('/api/courier/location', methods=['POST'])
+@login_required('courier', 'admin')
+def api_courier_location():
+    data = request.json; lat, lng = data.get('lat'), data.get('lng')
+    if lat and lng:
+        db = get_db()
+        db.execute("INSERT INTO courier_locations (courier_id, lat, lng, updated_at) VALUES (?,?,?,?) ON CONFLICT(courier_id) DO UPDATE SET lat=?, lng=?, updated_at=?", (session['user_id'], lat, lng, datetime.now().strftime("%H:%M:%S"), lat, lng, datetime.now().strftime("%H:%M:%S")))
+        db.commit()
+    return jsonify({"success": True})
+
+@app.route('/api/couriers/locations')
+@login_required('admin')
+def api_couriers_locations():
+    return jsonify([dict(r) for r in get_db().execute("SELECT c.lat, c.lng, c.updated_at, u.username FROM courier_locations c JOIN users u ON c.courier_id = u.id").fetchall()])
+
+@app.route('/chat')
+@login_required()
+def chat_view(): return render_template('chat.html')
+
+@app.route('/api/chat/get')
+@login_required()
+def api_chat_get():
+    db = get_db()
+    db.execute("UPDATE messages SET is_read=1 WHERE sender_id != ?", (session['user_id'],)); db.commit()
+    msgs = db.execute("SELECT * FROM messages ORDER BY id DESC LIMIT 50").fetchall()
+    now = time.time(); currently_typing = [u for u, t in typing_users.items() if now - t < 3 and u != session['username']]
+    return jsonify({"messages": [dict(m) for m in reversed(msgs)], "typing": currently_typing})
+
+@app.route('/api/chat/send', methods=['POST'])
+@login_required()
+def api_chat_send():
+    data = request.json or {}; text = data.get('text', '').strip()
+    if text:
+        db = get_db()
+        db.execute("INSERT INTO messages (sender_id, sender_name, text, created_at, is_read) VALUES (?,?,?,?,0)", (session['user_id'], session['username'], text, datetime.now().strftime("%H:%M")))
+        db.commit()
+        if session['username'] in typing_users: del typing_users[session['username']]
+    return jsonify({"success": True})
+
+@app.route('/api/chat/typing', methods=['POST'])
+@login_required()
+def api_chat_typing():
+    typing_users[session['username']] = time.time(); return jsonify({"success": True})
+
+@app.route('/api/chat/clear', methods=['POST'])
+@login_required('admin')
+def api_chat_clear():
+    db = get_db(); db.execute("DELETE FROM messages"); db.commit(); return jsonify({"success": True})
+
+@app.route('/crm')
+@login_required('admin')
+def crm_panel(): return render_template('crm.html', clients=get_db().execute("SELECT * FROM clients ORDER BY total_spent DESC").fetchall())
+
+@app.route('/warehouse')
+@login_required('admin')
+def warehouse_panel(): return render_template('warehouse.html', ingredients=get_db().execute("SELECT * FROM ingredients ORDER BY name").fetchall())
+
+@app.route('/admin/ingredient/add', methods=['POST'])
+@login_required('admin')
+def admin_ingredient_add():
+    if request.form.get('name') and request.form.get('stock') and request.form.get('unit'):
+        db = get_db(); db.execute("INSERT INTO ingredients (name, stock, unit, cost_price) VALUES (?,?,?,?)", (request.form.get('name'), float(request.form.get('stock')), request.form.get('unit'), float(request.form.get('cost_price', 0)))); db.commit()
+    return redirect(url_for('warehouse_panel'))
+
+@app.route('/admin/ingredient/delete/<int:ing_id>', methods=['POST'])
+@login_required('admin')
+def admin_ingredient_delete(ing_id):
+    db = get_db(); db.execute("DELETE FROM ingredients WHERE id=?", (ing_id,)); db.commit(); return redirect(url_for('warehouse_panel'))
+
+@app.route('/analytics')
+@login_required('admin')
+def analytics_panel():
+    db = get_db(); stats = db.execute("SELECT SUM(total) as rev, SUM(cost) as cost FROM orders WHERE status != 'cancelled'").fetchone()
+    total_rev = stats['rev'] or 0; total_cost = stats['cost'] or 0; total_profit = total_rev - total_cost
+    return render_template('analytics.html', total_rev=total_rev, total_cost=total_cost, total_profit=total_profit, margin=round((total_profit / total_rev * 100) if total_rev > 0 else 0, 1), recent_orders=db.execute("SELECT * FROM orders ORDER BY id DESC LIMIT 10").fetchall())
+
+@app.route('/track/<int:order_id>')
+def track_order(order_id): return render_template('track.html', order_id=order_id)
+
+@app.route('/api/track_order/<int:order_id>')
+def api_track_order(order_id):
+    order = get_db().execute("SELECT * FROM orders WHERE id=?", (order_id,)).fetchone()
+    if not order: return jsonify({"error": "Not found"}), 404
+    return jsonify({"status": order['status'], "total": order['total'], "created_at": order['created_at']})
+
+@app.route('/admin/shop_status', methods=['POST'])
+@login_required('admin')
+def admin_shop_status():
+    if request.form.get('status') in ['auto', 'open', 'closed']: set_setting('shop_status', request.form.get('status'))
+    return redirect(url_for('admin_panel'))
+
+@app.route('/admin/banner/add', methods=['POST'])
+@login_required('admin')
+def admin_banner_add():
+    file = request.files.get('image')
+    if file and file.filename:
+        filename = 'banner_' + str(uuid.uuid4()) + '.' + file.filename.rsplit('.', 1)[1].lower(); file.save(os.path.join(app.config['UPLOAD_FOLDER'], filename))
+        db = get_db(); db.execute("INSERT INTO banners (image, title) VALUES (?,?)", (filename, request.form.get('title', ''))); db.commit()
+    return redirect(url_for('admin_panel'))
+
+@app.route('/admin/banner/delete/<int:b_id>', methods=['POST'])
+@login_required('admin')
+def admin_banner_delete(b_id):
+    db = get_db(); db.execute("DELETE FROM banners WHERE id=?", (b_id,)); db.commit(); return redirect(url_for('admin_panel'))
+
+@app.route('/admin/backup_db')
+@login_required('admin')
+def backup_db(): return send_file(DB_PATH, as_attachment=True, download_name=f"sushi_backup_{datetime.now().strftime('%Y%m%d_%H%M')}.db")
+
+@app.route('/admin')
+@login_required('admin')
+def admin_panel():
+    db = get_db(); today = datetime.now().strftime("%Y-%m-%d")
+    stats = db.execute("SELECT COUNT(*) cnt, COALESCE(SUM(total), 0) rev FROM orders WHERE date(created_at) = ? AND status != 'cancelled'", (today,)).fetchone()
+    avg_check = (stats['rev'] / stats['cnt']) if stats['cnt'] > 0 else 0
+    rating_row = db.execute("SELECT AVG(rating) as avg_r, COUNT(rating) as count_r FROM orders WHERE rating > 0").fetchone()
+    avg_rating = round(rating_row['avg_r'], 1) if rating_row['avg_r'] else 0; reviews_count = rating_row['count_r']
+    chart_data = []
+    for i in range(6, -1, -1):
+        d = (datetime.now() - timedelta(days=i)).strftime("%Y-%m-%d")
+        r = db.execute("SELECT COALESCE(SUM(total),0) rev FROM orders WHERE date(created_at)=? AND status!='cancelled'", (d,)).fetchone()
+        chart_data.append({"date": d[5:], "rev": r['rev']})
+    top_items = db.execute("SELECT oi.name, SUM(oi.qty) total_qty FROM order_items oi JOIN orders o ON oi.order_id = o.id WHERE date(o.created_at) = ? AND o.status != 'cancelled' GROUP BY oi.name ORDER BY total_qty DESC LIMIT 5", (today,)).fetchall()
+    top_clients = db.execute("SELECT phone, COUNT(*) cnt, SUM(total) sum FROM orders WHERE date(created_at) = ? AND status != 'cancelled' AND phone != '' GROUP BY phone ORDER BY sum DESC LIMIT 5", (today,)).fetchall()
+    return render_template('admin.html', stats=stats, avg_check=avg_check, chart_data=chart_data, top_items=top_items, top_clients=top_clients, menu=db.execute("SELECT * FROM menu ORDER BY sort_weight DESC, category, name").fetchall(), users=db.execute("SELECT id, username, role, created_at FROM users ORDER BY id").fetchall(), zones=db.execute("SELECT * FROM zones").fetchall(), promos=db.execute("SELECT * FROM promocodes ORDER BY id DESC").fetchall(), avg_rating=avg_rating, reviews_count=reviews_count, recent_reviews=db.execute("SELECT * FROM orders WHERE rating > 0 ORDER BY id DESC LIMIT 5").fetchall(), shop_status=get_setting('shop_status'), banners=db.execute("SELECT * FROM banners ORDER BY id DESC").fetchall())
+
+@app.route('/admin/users/add', methods=['POST'])
+@login_required('admin')
+def admin_user_add():
+    username = request.form.get('username', '').strip(); password = request.form.get('password', ''); role = request.form.get('role')
+    if username and password and role:
+        db = get_db()
+        try: db.execute("INSERT INTO users (username, password_hash, role, created_at) VALUES (?,?,?,?)", (username, generate_password_hash(password), role, datetime.now().strftime("%Y-%m-%d %H:%M:%S"))); db.commit()
+        except sqlite3.IntegrityError: pass
+    return redirect(url_for('admin_panel'))
+
+@app.route('/admin/users/delete/<int:user_id>', methods=['POST'])
+@login_required('admin')
+def admin_user_delete(user_id):
+    if user_id == session.get('user_id'): return "Вы не можете удалить свой аккаунт!", 400
+    db = get_db(); db.execute("DELETE FROM users WHERE id=?", (user_id,)); db.commit(); return redirect(url_for('admin_panel'))
+
+@app.route('/admin/export/orders')
+@login_required('admin')
+def export_orders():
+    db = get_db(); orders = db.execute("SELECT * FROM orders ORDER BY id DESC").fetchall()
+    wb = openpyxl.Workbook(); ws = wb.active; ws.title = "Заказы"
+    ws.append(["ID", "Дата", "Клиент", "Адрес", "Тип", "Сумма", "Себестоимость", "Оплата", "Сдача с", "Статус", "Промокод", "Оценка"])
+    for o in orders: ws.append([o['id'], o['created_at'], o['phone'], o['address'], o['delivery_type'], o['total'], o['cost'], o['payment_method'], o['change_from'], o['status'], o['promo_code'], o['rating']])
+    output = io.BytesIO(); wb.save(output); output.seek(0)
+    response = make_response(output.getvalue()); response.headers["Content-Disposition"] = "attachment; filename=orders.xlsx"; response.headers["Content-type"] = "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet"; return response
+
+@app.route('/admin/export/clients')
+@login_required('admin')
+def export_clients():
+    db = get_db(); clients = db.execute("SELECT * FROM clients ORDER BY total_spent DESC").fetchall()
+    wb = openpyxl.Workbook(); ws = wb.active; ws.title = "Клиенты"
+    ws.append(["Телефон", "Заказов", "Потрачено (LTV)", "Бонусы", "Уровень", "Последний заказ"])
+    for c in clients: ws.append([c['phone'], c['orders_count'], c['total_spent'], c['bonuses'], c['level'], c['last_order_at']])
+    output = io.BytesIO(); wb.save(output); output.seek(0)
+    response = make_response(output.getvalue()); response.headers["Content-Disposition"] = "attachment; filename=clients.xlsx"; response.headers["Content-type"] = "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet"; return response
+
+@app.route('/api/check_promo', methods=['POST'])
+def check_promo():
+    data = request.json or {}; code = data.get('code', '').strip().upper()
+    promo = get_db().execute("SELECT * FROM promocodes WHERE code=? AND is_active=1", (code,)).fetchone()
+    if promo: return jsonify({"success": True, "type": promo['discount_type'], "value": promo['discount_value']})
+    return jsonify({"success": False, "error": "Промокод не найден"})
+
+@app.route('/admin/promo/add', methods=['POST'])
+@login_required('admin')
+def admin_promo_add():
+    code = request.form.get('code', '').strip().upper(); dtype = request.form.get('type'); val = request.form.get('value')
+    if code and dtype and val:
+        db = get_db()
+        try: db.execute("INSERT INTO promocodes (code, discount_type, discount_value) VALUES (?,?,?)", (code, dtype, int(val))); db.commit()
+        except sqlite3.IntegrityError: pass
+    return redirect(url_for('admin_panel'))
+
+@app.route('/admin/promo/delete/<int:promo_id>', methods=['POST'])
+@login_required('admin')
+def admin_promo_delete(promo_id):
+    db = get_db(); db.execute("DELETE FROM promocodes WHERE id=?", (promo_id,)); db.commit(); return redirect(url_for('admin_panel'))
+
+@app.route('/admin/menu/add', methods=['POST'])
+@login_required('admin')
+def admin_menu_add():
+    name, price, category = request.form.get('name'), request.form.get('price'), request.form.get('category')
+    file = request.files.get('image'); filename = ''
+    if file and file.filename:
+        filename = str(uuid.uuid4()) + '.' + file.filename.rsplit('.', 1)[1].lower(); file.save(os.path.join(app.config['UPLOAD_FOLDER'], filename))
+    if name and price and category:
+        db = get_db(); db.execute("INSERT INTO menu (name, price, category, image, composition, modifiers, sort_weight) VALUES (?,?,?,?,?,?,?)", (name, int(price), category, filename, request.form.get('composition', ''), request.form.get('modifiers', ''), int(request.form.get('sort_weight', 0)))); db.commit()
+    return redirect(url_for('admin_panel'))
+
+@app.route('/admin/menu/edit/<int:menu_id>', methods=['GET', 'POST'])
+@login_required('admin')
+def admin_menu_edit(menu_id):
+    db = get_db()
+    if request.method == 'POST':
+        name, price, category = request.form.get('name'), request.form.get('price'), request.form.get('category')
+        file = request.files.get('image')
+        if file and file.filename:
+            filename = str(uuid.uuid4()) + '.' + file.filename.rsplit('.', 1)[1].lower(); file.save(os.path.join(app.config['UPLOAD_FOLDER'], filename))
+            db.execute("UPDATE menu SET name=?, price=?, category=?, composition=?, modifiers=?, image=?, sort_weight=? WHERE id=?", (name, int(price), category, request.form.get('composition', ''), request.form.get('modifiers', ''), filename, int(request.form.get('sort_weight', 0)), menu_id))
+        else: db.execute("UPDATE menu SET name=?, price=?, category=?, composition=?, modifiers=?, sort_weight=? WHERE id=?", (name, int(price), category, request.form.get('composition', ''), request.form.get('modifiers', ''), int(request.form.get('sort_weight', 0)), menu_id))
+        db.execute("DELETE FROM recipes WHERE menu_id=?", (menu_id,))
+        for key, val in request.form.items():
+            if key.startswith('ing_') and val.strip(): db.execute("INSERT INTO recipes (menu_id, ingredient_id, amount) VALUES (?,?,?)", (menu_id, key.split('_')[1], float(val)))
+        db.commit(); return redirect(url_for('admin_panel'))
+    return render_template('edit_menu.html', item=db.execute("SELECT * FROM menu WHERE id=?", (menu_id,)).fetchone(), ingredients=db.execute("SELECT * FROM ingredients ORDER BY name").fetchall(), recipe={r['ingredient_id']: r['amount'] for r in db.execute("SELECT * FROM recipes WHERE menu_id=?", (menu_id,)).fetchall()})
+
+@app.route('/admin/menu/toggle/<int:menu_id>', methods=['POST'])
+@login_required('admin')
+def admin_menu_toggle(menu_id):
+    db = get_db(); db.execute("UPDATE menu SET available = 1 - available WHERE id=?", (menu_id,)); db.commit(); return redirect(url_for('admin_panel'))
+
+@app.route('/admin/menu/stop/<int:menu_id>', methods=['POST'])
+@login_required('admin')
+def admin_menu_stop(menu_id):
+    db = get_db(); db.execute("UPDATE menu SET stop_list = 1 - stop_list WHERE id=?", (menu_id,)); db.commit(); return redirect(url_for('admin_panel'))
+
+@app.route('/admin/menu/delete/<int:menu_id>', methods=['POST'])
+@login_required('admin')
+def admin_menu_delete(menu_id):
+    db = get_db(); db.execute("DELETE FROM menu WHERE id=?", (menu_id,)); db.commit(); return redirect(url_for('admin_panel'))
+
+@app.route('/admin/menu/clear', methods=['POST'])
+@login_required('admin')
+def admin_menu_clear():
+    db = get_db(); db.execute("DELETE FROM menu"); db.commit(); return redirect(url_for('admin_panel'))
+
+@app.route('/rate/<int:order_id>', methods=['GET', 'POST'])
+def rate_order(order_id):
+    db = get_db()
+    if request.method == 'POST':
+        db.execute("UPDATE orders SET rating=?, review_text=? WHERE id=?", (int(request.form.get('rating', 5)), request.form.get('review_text', ''), order_id)); db.commit()
+        return "<h1 style='text-align:center; color:#30d158; font-family:sans-serif; margin-top:50px'>Спасибо за отзыв!</h1>"
+    return render_template('rate.html', order=db.execute("SELECT * FROM orders WHERE id=?", (order_id,)).fetchone() or abort(404))
+
+@app.route('/site')
+def public_site():
+    db = get_db()
+    return render_template('public_site.html', menu=db.execute("SELECT * FROM menu WHERE available=1 ORDER BY sort_weight DESC, category, name").fetchall(), categories=db.execute("SELECT DISTINCT category FROM menu WHERE available=1 ORDER BY category").fetchall(), shop_open=is_shop_open(), banners=db.execute("SELECT * FROM banners ORDER BY id DESC").fetchall())
+
+def deduct_ingredients(items):
+    db = get_db(); total_cost = 0
+    for i in items:
+        for r in db.execute("SELECT r.ingredient_id, r.amount, i.name, i.stock, i.cost_price FROM recipes r JOIN ingredients i ON r.ingredient_id = i.id WHERE r.menu_id=?", (i.get('id'),)).fetchall():
+            needed = r['amount'] * int(i.get('qty', 1))
+            if r['stock'] < needed: return f"Нет в наличии: {r['name']} (нужно {needed}, есть {r['stock']})", 0
+            db.execute("UPDATE ingredients SET stock = stock - ? WHERE id=?", (needed, r['ingredient_id'])); total_cost += (r['cost_price'] * needed)
+    return None, total_cost
+
+@app.route('/api/public_order', methods=['POST'])
+def public_order():
+    if not is_shop_open(): return jsonify({"error": "Мы работаем с 10:00 до 21:30."}), 400
+    data = request.json or {}; items = data.get('items', [])
+    if not items: return jsonify({"error": "Пустой заказ"}), 400
+    db = get_db(); err, total_cost = deduct_ingredients(items)
+    if err: return jsonify({"error": err}), 400
+    shift = get_open_shift(); shift_id = shift['id'] if shift else 1
+    subtotal = sum(int(i['price']) * int(i.get('qty', 1)) for i in items)
+    promo_code = data.get('promo_code', '').strip().upper(); promo_discount = 0
+    if promo_code:
+        promo = db.execute("SELECT * FROM promocodes WHERE code=? AND is_active=1", (promo_code,)).fetchone()
+        if promo: promo_discount = (subtotal * promo['discount_value']) // 100 if promo['discount_type'] == 'percent' else promo['discount_value']
+    total = max(0, subtotal - promo_discount); phone = data.get('phone', ''); address = data.get('address', '')
+    pay_method = data.get('payment_method', 'не указан'); change_from = int(data.get('change_from', 0))
+    delivery_type = data.get('delivery_type', 'доставка')
+    if delivery_type == 'самовывоз': address = 'Самовывоз'
+
+    cur = db.execute("INSERT INTO orders (created_at, status, total, cost, address, phone, comment, shift_id, payment_method, change_from, delivery_type, promo_code, source) VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?)", (datetime.now().strftime("%Y-%m-%d %H:%M:%S"), 'new', total, total_cost, address, phone, data.get('comment', ''), shift_id, pay_method, change_from, delivery_type, promo_code, 'Сайт'))
+    order_id = cur.lastrowid
+    for i in items: db.execute("INSERT INTO order_items (order_id, menu_id, name, price, qty, modifiers) VALUES (?,?,?,?,?,?)", (order_id, i.get('id'), i['name'], int(i['price']), int(i.get('qty', 1)), i.get('mods', '')))
+    if phone:
+        client = db.execute("SELECT * FROM clients WHERE phone=?", (phone,)).fetchone()
+        new_total_spent = (client['total_spent'] if client else 0) + total
+        new_level = 'gold' if new_total_spent >= 30000 else ('silver' if new_total_spent >= 10000 else 'bronze')
+        cashback_rate = 0.10 if new_level == 'gold' else (0.07 if new_level == 'silver' else 0.05)
+        db.execute("""INSERT INTO clients (phone, total_spent, orders_count, last_order_at, level, bonuses) VALUES (?,?,?,?,?,?) ON CONFLICT(phone) DO UPDATE SET total_spent=total_spent+?, orders_count=orders_count+1, last_order_at=?, level=?, bonuses=bonuses+?""", (phone, total, 1, datetime.now().strftime("%Y-%m-%d %H:%M:%S"), new_level, int(total * cashback_rate), total, datetime.now().strftime("%Y-%m-%d %H:%M:%S"), new_level, int(total * cashback_rate)))
+    db.commit(); return jsonify({"success": True, "order_id": order_id})
+
+@app.route('/api/site/client/<phone>')
+def site_client(phone):
+    order = get_db().execute("SELECT * FROM orders WHERE phone=? ORDER BY id DESC LIMIT 1", (phone,)).fetchone()
+    if order: return jsonify({"success": True, "address": order['address'], "last_order": [dict(i) for i in get_db().execute("SELECT * FROM order_items WHERE order_id=?", (order['id'],)).fetchall()]})
+    return jsonify({"success": False})
+
+@app.route('/api/client/<phone>')
+def api_client(phone):
+    client = get_db().execute("SELECT * FROM clients WHERE phone=?", (phone,)).fetchone()
+    if client: return jsonify({"success": True, "bonuses": client['bonuses'], "level": client['level']})
+    return jsonify({"success": False})
+
+@app.route('/api/create_order', methods=['POST'])
+@login_required('admin', 'cashier')
+def create_order():
+    if not is_shop_open(): return jsonify({"error": "Прием заказов приостановлен (10:00-21:30)."}), 400
+    data = request.json or {}; items = data.get('items', [])
+    if not items: return jsonify({"error": "Пустой заказ"}), 400
+    db = get_db(); err, total_cost = deduct_ingredients(items)
+    if err: return jsonify({"error": err}), 400
+    shift = get_open_shift()
+    if not shift: return jsonify({"error": "Смена не открыта"}), 400
+    phone = data.get('phone', ''); address = data.get('address', ''); subtotal = sum(int(i['price']) * int(i.get('qty', 1)) for i in items)
+    manual_discount = (subtotal * int(data.get('discount', 0)) // 100) if data.get('discount_type') == 'percent' else int(data.get('discount', 0))
+    promo_code = data.get('promo_code', '').strip().upper(); promo_discount = 0
+    if promo_code:
+        promo = db.execute("SELECT * FROM promocodes WHERE code=? AND is_active=1", (promo_code,)).fetchone()
+        if promo: promo_discount = (subtotal * promo['discount_value']) // 100 if promo['discount_type'] == 'percent' else promo['discount_value']
+    total = max(0, subtotal - manual_discount - promo_discount)
+    use_bonus = int(data.get('use_bonus', 0))
+    if use_bonus > 0:
+        client = db.execute("SELECT * FROM clients WHERE phone=?", (phone,)).fetchone()
+        if client and client['bonuses'] >= use_bonus:
+            total = max(0, total - use_bonus); db.execute("UPDATE clients SET bonuses = bonuses - ? WHERE phone=?", (use_bonus, phone))
+    cur = db.execute("INSERT INTO orders (created_at, status, total, cost, address, phone, comment, shift_id, cashier_id, source, payment_method, delivery_type, delivery_zone, promo_code) VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?)", (datetime.now().strftime("%Y-%m-%d %H:%M:%S"), 'new', total, total_cost, address, phone, data.get('comment', ''), shift['id'], session['user_id'], 'Касса', data.get('payment_method', 'не указан'), data.get('delivery_type', 'доставка'), data.get('zone', ''), promo_code))
+    order_id = cur.lastrowid
+    for i in items: db.execute("INSERT INTO order_items (order_id, menu_id, name, price, qty, modifiers) VALUES (?,?,?,?,?,?)", (order_id, i.get('id'), i['name'], int(i['price']), int(i.get('qty', 1)), i.get('mods', '')))
+    if phone:
+        client = db.execute("SELECT * FROM clients WHERE phone=?", (phone,)).fetchone()
+        new_total_spent = (client['total_spent'] if client else 0) + total
+        new_level = 'gold' if new_total_spent >= 30000 else ('silver' if new_total_spent >= 10000 else 'bronze')
+        cashback_rate = 0.10 if new_level == 'gold' else (0.07 if new_level == 'silver' else 0.05)
+        db.execute("""INSERT INTO clients (phone, total_spent, orders_count, last_order_at, level, bonuses) VALUES (?,?,?,?,?,?) ON CONFLICT(phone) DO UPDATE SET total_spent=total_spent+?, orders_count=orders_count+1, last_order_at=?, level=?, bonuses=bonuses+?""", (phone, total, 1, datetime.now().strftime("%Y-%m-%d %H:%M:%S"), new_level, int(total * cashback_rate), total, datetime.now().strftime("%Y-%m-%d %H:%M:%S"), new_level, int(total * cashback_rate)))
+    db.commit(); return jsonify({"success": True, "order_id": order_id, "total": total})
+
+@app.route('/api/orders')
+@login_required()
+def api_orders():
+    status = request.args.get('status'); db = get_db()
+    if status:
+        if status == 'active': rows = db.execute("SELECT * FROM orders WHERE status IN ('new', 'cooking') ORDER BY id").fetchall()
+        elif status == 'all_active': rows = db.execute("SELECT * FROM orders WHERE status IN ('new', 'cooking', 'ready', 'delivering') ORDER BY id").fetchall()
+        else: rows = db.execute("SELECT * FROM orders WHERE status=? ORDER BY id", (status,)).fetchall()
+    else: rows = db.execute("SELECT * FROM orders ORDER BY id DESC").fetchall()
+    result = [dict(r) | {"items": [dict(i) for i in db.execute("SELECT * FROM order_items WHERE order_id=?", (r['id'],)).fetchall()]} for r in rows]
+    return jsonify(result)
+
+@app.route('/api/set_status/<int:order_id>', methods=['POST'])
+@login_required()
+def set_status(order_id):
+    data = request.json or {}; new_status = data.get('status'); db = get_db()
+    try:
+        if new_status == 'cancelled':
+            items = db.execute("SELECT menu_id, qty FROM order_items WHERE order_id=?", (order_id,)).fetchall()
+            for i in items:
+                if i['menu_id']:
+                    for r in db.execute("SELECT ingredient_id, amount FROM recipes WHERE menu_id=?", (i['menu_id'],)).fetchall():
+                        db.execute("UPDATE ingredients SET stock = stock + ? WHERE id=?", (r['amount'] * i['qty'], r['ingredient_id']))
+        if new_status == 'cooking': db.execute("UPDATE orders SET status=?, cook_start_time=? WHERE id=?", (new_status, datetime.now().strftime("%Y-%m-%d %H:%M:%S"), order_id))
+        else: db.execute("UPDATE orders SET status=? WHERE id=?", (new_status, order_id))
+        db.commit(); return jsonify({"success": True})
+    except Exception as e: return jsonify({"error": str(e)}), 500
+
+if __name__ == '__main__':
+    init_db()
+    print("="*55)
+    print("🚀 СИСТЕМА ЗАПУЩЕНА!")
+    print("="*55)
+    app.run(host='0.0.0.0', port=5000, debug=True)

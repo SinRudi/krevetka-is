@@ -1,0 +1,26 @@
+<!DOCTYPE html><html lang="ru"><head><meta charset="UTF-8"><title>Бегунок Кухни #{{ order.id }}</title>
+<style>
+body{font-family:monospace;width:300px;margin:0 auto;padding:18px;color:#000;background:#fff;font-size:15px}
+h2{text-align:center;margin:0 0 5px 0;font-size:22px}
+.center{text-align:center}
+table{width:100%;border-collapse:collapse;margin:12px 0}td{padding:6px 0;border-bottom:1px dotted #ccc}
+hr{border:none;border-top:2px dashed #000;margin:12px 0}
+.btn{display:block;width:100%;padding:12px;margin-top:12px;background:#000;color:#fff;border:none;border-radius:6px;text-align:center;text-decoration:none;cursor:pointer}
+@media print{.btn{display:none}}
+</style></head><body onload="window.print()">
+<h2> КУХНЯ • #{{ order.id }}</h2>
+<div class="center">Время: {{ order.created_at }}</div>
+{% if order.scheduled_time %}<div class="center" style="font-size:18px;font-weight:bold;margin-top:6px;">⏰ КО ВРЕМЕНИ: {{ order.scheduled_time }}</div>{% endif %}
+<hr>
+<table>
+{% for item in items %}
+<tr>
+  <td style="font-size:17px;font-weight:bold;">{{ item.name }}{% if item.modifiers %}<br><span style="font-size:14px;"> {{ item.modifiers }}</span>{% endif %}</td>
+  <td style="text-align:right;font-size:19px;font-weight:bold;">×{{ item.qty }}</td>
+</tr>
+{% endfor %}
+</table>
+{% if order.comment %}<hr><div><b>КОММЕНТАРИЙ:</b><br>{{ order.comment }}</div>{% endif %}
+<button class="btn" onclick="window.print()"> Печать бегунка</button>
+<a href="/kitchen" class="btn" style="background:#444;">← Назад на KDS</a>
+</body></html>

@@ -1,0 +1,204 @@
+<!DOCTYPE html>
+<html lang="ru"><head><meta charset="UTF-8"><meta name="csrf-token" content="{{ csrf_token() }}"><script src="/static/security.js"></script><title>KDS Кухня ULTRA X2 — Креветка</title>
+<link rel="stylesheet" href="/static/pro_style.css">
+<style>
+.kds-subbar { background: var(--bg-panel); border-bottom: 1px solid var(--border); padding: 12px 20px; display: flex; justify-content: space-between; align-items: center; gap: 12px; flex-wrap: wrap; }
+.station-filters { display: flex; gap: 8px; flex-wrap: wrap; }
+.st-pill { background: var(--bg-card); border: 1px solid var(--border); color: var(--text-main); padding: 10px 18px; border-radius: 10px; font-weight: 900; font-size: 14px; cursor: pointer; }
+.st-pill.active { background: var(--accent); color: #fff; border-color: var(--accent); }
+
+/* АГРЕГАТОР ПОРЦИЙ (ЧТО КРУТИТЬ ПРЯМО СЕЙЧАС) */
+.batch-strip { background: rgba(255, 107, 0, 0.08); border-bottom: 1px solid var(--border); padding: 10px 20px; display: flex; gap: 10px; align-items: center; overflow-x: auto; }
+.batch-item { background: var(--bg-card); border: 1px solid var(--accent); padding: 6px 12px; border-radius: 8px; font-size: 13px; font-weight: 800; white-space: nowrap; }
+
+.kds-grid { padding: 18px 20px; display: grid; grid-template-columns: repeat(auto-fill, minmax(340px, 1fr)); gap: 16px; align-items: start; }
+.kds-ticket { background: var(--bg-card); border: 2px solid var(--border); border-radius: 14px; overflow: hidden; display: flex; flex-direction: column; box-shadow: 0 8px 24px rgba(0,0,0,0.25); }
+.kds-ticket.status-new { border-color: var(--blue); }
+.kds-ticket.status-cooking { border-color: var(--yellow); }
+.kds-ticket.late-order { border-color: var(--red); animation: pulseRed 2s infinite; }
+@keyframes pulseRed { 0%, 100% { box-shadow: 0 0 0 0 rgba(239,68,68,0.4); } 50% { box-shadow: 0 0 0 8px rgba(239,68,68,0); } }
+
+.ticket-head { padding: 12px 16px; background: var(--bg-panel); border-bottom: 1px solid var(--border); display: flex; justify-content: space-between; align-items: center; }
+.ticket-body { padding: 12px 16px; flex: 1; }
+.dish-line { display: flex; justify-content: space-between; align-items: center; padding: 10px 8px; border-bottom: 1px dashed var(--border); cursor: pointer; border-radius: 8px; transition: 0.1s; }
+.dish-line:hover { background: rgba(255,255,255,0.04); }
+.dish-line.done-line { opacity: 0.38; text-decoration: line-through; background: rgba(16,185,129,0.08); }
+.station-mini { font-size: 10px; font-weight: 900; padding: 2px 6px; border-radius: 4px; margin-right: 6px; }
+.s-baked { background: #ef4444; color: #fff; }
+.s-tempura { background: #f59e0b; color: #000; }
+.s-cold { background: #3b82f6; color: #fff; }
+</style>
+</head>
+<body>
+
+<div class="ultra-topbar">
+    <a href="/" class="ultra-brand"><span>🍳 KDS ЭЛЕКТРОННАЯ КУХНЯ</span><span class="ultra-tag">ULTRA X2</span></a>
+    <div class="ultra-nav">
+        <a href="/" class="btn btn-ghost">🖥️ Касса</a>
+        <a href="/autopilot" class="btn btn-blue">🔪 Утренний чек-лист</a>
+        <a href="/warehouse" class="btn btn-purple">📦 Склад и Заготовки</a>
+        <a href="/board" target="_blank" class="btn btn-green">📺 ТВ-Табло</a>
+        <button onclick="document.body.classList.toggle('light-theme');localStorage.setItem('theme', document.body.classList.contains('light-theme')?'light':'dark')" class="btn btn-ghost">🌓 Тема</button>
+    </div>
+</div>
+
+<div class="kds-subbar">
+    <div class="station-filters">
+        <button class="st-pill active" onclick="setStation('all', this)">🍱 Все станции</button>
+        <button class="st-pill" onclick="setStation('cold', this)">❄️ Холодный цех (Роллы)</button>
+        <button class="st-pill" onclick="setStation('baked', this)">🔥 Запечённые / Гриль</button>
+        <button class="st-pill" onclick="setStation('tempura', this)">🍤 Темпура / Фритюр</button>
+    </div>
+    <div style="display:flex;gap:12px;align-items:center">
+        <span style="font-size:14px;font-weight:800">Активных чеков: <b id="active-tickets-cnt" style="color:var(--accent)">0</b></span>
+        <button class="btn btn-ghost" style="padding:8px 14px" onclick="playDing()">🔔 Тест звука</button>
+    </div>
+</div>
+
+<!-- СВОДКА ПОВАРУ: СКОЛЬКО ОДИНАКОВЫХ РОЛЛОВ СЕЙЧАС В РАБОТЕ -->
+<div class="batch-strip" id="batch-summary">
+    <span style="font-size:12px;font-weight:900;color:var(--accent)">🍣 СВОДКА В РАБОТЕ:</span>
+    <span style="font-size:13px;color:var(--text-muted)">Ожидание активных заказов...</span>
+</div>
+
+<div class="kds-grid" id="kds-container"></div>
+
+<script>
+if(localStorage.getItem('theme') === 'light') document.body.classList.add('light-theme');
+
+let currentStation = 'all';
+let checkedItems = JSON.parse(localStorage.getItem('kds_checked_items') || '{}');
+let knownOrderIds = new Set();
+let firstLoad = true;
+
+function playDing() {
+    try {
+        let ctx = new (window.AudioContext || window.webkitAudioContext)();
+        let osc = ctx.createOscillator();
+        let gain = ctx.createGain();
+        osc.type = 'sine';
+        osc.frequency.setValueAtTime(880, ctx.currentTime);
+        osc.frequency.setValueAtTime(1174, ctx.currentTime + 0.12);
+        gain.gain.setValueAtTime(0.25, ctx.currentTime);
+        gain.gain.exponentialRampToValueAtTime(0.001, ctx.currentTime + 0.6);
+        osc.connect(gain); gain.connect(ctx.destination);
+        osc.start(); osc.stop(ctx.currentTime + 0.6);
+    } catch(e) {}
+}
+
+function detectStation(name) {
+    let n = (name || '').toLowerCase();
+    if(n.includes('запеч')) return {code: 'baked', label: '🔥 ПЕЧЬ', cls: 's-baked'};
+    if(n.includes('темпур') || n.includes('жарен') || n.includes('кляр') || n.includes('фри')) return {code: 'tempura', label: '🍤 ФРИТЮР', cls: 's-tempura'};
+    return {code: 'cold', label: '❄️ ХОЛОД', cls: 's-cold'};
+}
+
+function setStation(st, btn) {
+    currentStation = st;
+    document.querySelectorAll('.st-pill').forEach(b => b.classList.remove('active'));
+    btn.classList.add('active');
+    loadKitchen();
+}
+
+function toggleLineDone(key) {
+    checkedItems[key] = !checkedItems[key];
+    localStorage.setItem('kds_checked_items', JSON.stringify(checkedItems));
+    loadKitchen();
+}
+
+function loadKitchen() {
+    fetch('/api/orders?status=active').then(r=>r.json()).then(data => {
+        let orders = Array.isArray(data) ? data : (data.orders || []);
+        document.getElementById('active-tickets-cnt').innerText = orders.length;
+
+        // Проверка новых заказов для звукового сигнала
+        let hasNew = false;
+        orders.forEach(o => {
+            if(!knownOrderIds.has(o.id)) {
+                knownOrderIds.add(o.id);
+                if(!firstLoad) hasNew = true;
+            }
+        });
+        firstLoad = false;
+        if(hasNew) playDing();
+
+        // Считаем агрегированную сводку по роллам/блюдам
+        let batchTotals = {};
+        let html = '';
+
+        orders.forEach(o => {
+            let filteredItems = (o.items || []).filter(i => {
+                let st = detectStation(i.name);
+                return currentStation === 'all' || st.code === currentStation;
+            });
+            if(filteredItems.length === 0) return;
+
+            let mins = 0;
+            if(o.created_at) {
+                let dt = new Date(o.created_at.replace(' ', 'T'));
+                if(!isNaN(dt)) mins = Math.max(0, Math.floor((Date.now() - dt.getTime()) / 60000));
+            }
+            let lateCls = mins >= 30 ? 'late-order' : '';
+            let stCls = 'status-' + (o.status || 'new');
+
+            let linesHtml = filteredItems.map((i, idx) => {
+                let cleanName = i.name.split('[')[0].trim();
+                batchTotals[cleanName] = (batchTotals[cleanName] || 0) + i.qty;
+                let st = detectStation(i.name);
+                let lineKey = `${o.id}_${idx}_${i.name}`;
+                let isDone = checkedItems[lineKey] ? 'done-line' : '';
+                return `<div class="dish-line ${isDone}" onclick="toggleLineDone('${lineKey.replace(/'/g, "")}')">
+                    <div>
+                        <span class="station-mini ${st.cls}">${st.label}</span>
+                        <b style="font-size:16px">${i.name}</b>
+                    </div>
+                    <span style="font-size:18px;font-weight:900;color:var(--accent);margin-left:10px">×${i.qty}</span>
+                </div>`;
+            }).join('');
+
+            let nextStatus = o.status === 'new' ? 'cooking' : 'ready';
+            let btnText = o.status === 'new' ? '👨‍🍳 НАЧАТЬ ГОТОВИТЬ' : '✅ ЗАКАЗ ГОТОВ (НА ВЫДАЧУ)';
+            let btnColor = o.status === 'new' ? 'btn-yellow' : 'btn-green';
+
+            html += `<div class="kds-ticket ${stCls} ${lateCls}">
+                <div class="ticket-head">
+                    <div>
+                        <span style="font-size:20px;font-weight:900">#${o.id}</span>
+                        <span style="margin-left:8px;padding:4px 8px;border-radius:6px;font-size:12px;font-weight:800;background:var(--bg-card)">${(o.delivery_type || 'Доставка').toUpperCase()}</span>
+                    </div>
+                    <div style="font-size:14px;font-weight:900;color:${mins >= 25 ? 'var(--red)' : 'var(--green)'}">⏱ ${mins} мин.</div>
+                </div>
+                <div class="ticket-body">
+                    ${o.comment ? `<div style="background:rgba(245,158,11,0.15);border:1px solid var(--yellow);color:#fbbf24;padding:8px 10px;border-radius:8px;font-size:13px;font-weight:800;margin-bottom:10px">💬 ${o.comment}</div>` : ''}
+                    <div style="font-size:11px;color:var(--text-muted);margin-bottom:6px">Нажмите на строку блюда, чтобы вычеркнуть готовую позицию:</div>
+                    ${linesHtml}
+                </div>
+                <div style="padding:12px 16px;background:var(--bg-panel);border-top:1px solid var(--border);display:flex;gap:8px">
+                    <button class="btn ${btnColor}" style="flex:1;padding:14px;font-size:15px" onclick="setStatus(${o.id}, '${nextStatus}')">${btnText}</button>
+                    <button class="btn btn-ghost" style="padding:14px" onclick="window.open('/receipt/${o.id}', '_blank')" title="Печать бегунка">🖨️</button>
+                </div>
+            </div>`;
+        });
+
+        document.getElementById('kds-container').innerHTML = html || '<div style="grid-column:1/-1;text-align:center;color:var(--text-muted);padding:70px;font-size:18px">На выбранной станции нет активных заказов 🍣</div>';
+
+        // Рендер сводки порций
+        let batchEntries = Object.entries(batchTotals);
+        if(batchEntries.length > 0) {
+            document.getElementById('batch-summary').innerHTML = '<span style="font-size:12px;font-weight:900;color:var(--accent)">🍣 СВОДКА ПОРЦИЙ:</span>' +
+                batchEntries.map(([k, v]) => `<span class="batch-item">${k}: <b style="color:var(--accent)">${v} порц.</b></span>`).join('');
+        } else {
+            document.getElementById('batch-summary').innerHTML = '<span style="font-size:12px;font-weight:900;color:var(--accent)">🍣 СВОДКА ПОРЦИЙ:</span><span style="font-size:13px;color:var(--text-muted)">Свободно</span>';
+        }
+    });
+}
+
+function setStatus(id, st){
+    fetch('/api/set_status/' + id, {method:'POST', headers:{'Content-Type':'application/json'}, body:JSON.stringify({status: st})})
+    .then(r=>r.json()).then(d => { if(d.success) loadKitchen(); });
+}
+
+setInterval(loadKitchen, 3000);
+loadKitchen();
+</script>
+</body></html>

@@ -1,0 +1,237 @@
+
+:root {
+    --mac-bg: #eceef2;
+    --mac-card: #ffffff;
+    --mac-sidebar: #f5f6f8;
+    --mac-border: #d1d5db;
+    --mac-text: #1f2937;
+    --mac-muted: #6b7280;
+    --mac-accent: #0066cc;
+    --mac-orange: #ff9500;
+    --mac-green: #34c759;
+    --mac-red: #ff3b30;
+}
+body.dark-theme, body {
+    --mac-bg: #1e1e24;
+    --mac-card: #282830;
+    --mac-sidebar: #22222a;
+    --mac-border: #3a3a46;
+    --mac-text: #f3f4f6;
+    --mac-muted: #9ca3af;
+    --mac-accent: #0a84ff;
+    --mac-orange: #ff9f0a;
+    --mac-green: #30d158;
+    --mac-red: #ff453a;
+}
+body {
+    margin: 0; padding: 0; background: var(--mac-bg); color: var(--mac-text);
+    font-family: -apple-system, BlinkMacSystemFont, "SF Pro Text", "SF Pro Icons", "Helvetica Neue", Helvetica, Arial, sans-serif;
+    -webkit-font-smoothing: antialiased;
+}
+.mac-window {
+    max-width: 1380px; margin: 20px auto; background: var(--mac-card); border: 1px solid var(--mac-border);
+    border-radius: 14px; box-shadow: 0 20px 40px rgba(0,0,0,0.3); overflow: hidden; display: flex; flex-direction: column; min-height: 90vh;
+}
+.mac-titlebar {
+    background: var(--mac-sidebar); padding: 12px 18px; border-bottom: 1px solid var(--mac-border);
+    display: flex; align-items: center; justify-content: space-between;
+}
+.traffic-lights { display: flex; gap: 8px; }
+.traffic-dot { width: 12px; height: 12px; border-radius: 50%; }
+.dot-red { background: #ff5f56; border: 1px solid #e0443e; }
+.dot-yellow { background: #ffbd2e; border: 1px solid #dea123; }
+.dot-green { background: #27c93f; border: 1px solid #1aab29; }
+
+.mac-content { padding: 25px; flex: 1; overflow-y: auto; }
+table { width: 100%; border-collapse: collapse; background: var(--mac-card); border-radius: 10px; overflow: hidden; border: 1px solid var(--mac-border); margin-bottom: 20px; }
+th, td { padding: 12px 16px; text-align: left; border-bottom: 1px solid var(--mac-border); font-size: 13px; }
+th { background: var(--mac-sidebar); color: var(--mac-muted); font-weight: 600; text-transform: uppercase; font-size: 11px; letter-spacing: 0.5px; }
+tr:hover { background: rgba(10, 132, 255, 0.04); }
+input, select, textarea { background: var(--mac-bg); border: 1px solid var(--mac-border); color: var(--mac-text); padding: 8px 12px; border-radius: 8px; font-size: 13px; outline: none; }
+input:focus, select:focus { border-color: var(--mac-accent); box-shadow: 0 0 0 3px rgba(10,132,255,0.2); }
+.mac-btn { background: var(--mac-accent); color: #fff; border: none; padding: 8px 16px; border-radius: 8px; cursor: pointer; font-weight: 600; font-size: 13px; transition: 0.15s; }
+.mac-btn:hover { opacity: 0.9; }
+.mac-btn:active { transform: scale(0.97); }
+.mac-card { background: var(--mac-sidebar); border: 1px solid var(--mac-border); border-radius: 12px; padding: 20px; margin-bottom: 20px; }
+
+
+/* === SOFT MATTE LIGHT THEME (БЕЗ ОСЛЕПЛЯЮЩЕГО БЕЛОГО И ЧЕРНЫХ ПЯТЕН) === */
+html[data-theme="light"],
+body.light-theme,
+body.theme-light,
+html.light body {
+    --bg-main: #e8ecf2 !important;
+    --bg-panel: #f4f6f9 !important;
+    --bg-elevated: #edf0f5 !important;
+    --bg-card: #f4f6f9 !important;
+    --bg-input: #e2e6ee !important;
+    --text-main: #18181b !important;
+    --text-primary: #18181b !important;
+    --text-muted: #525866 !important;
+    --text-secondary: #525866 !important;
+    --border: #cbd2de !important;
+    --border-color: #cbd2de !important;
+    background: #e8ecf2 !important;
+    color: #18181b !important;
+}
+
+/* Перекрашиваем все карточки, панели, модалки и таблицы в спокойный матовый оттенок */
+html[data-theme="light"] .card-panel,
+html[data-theme="light"] .stat-card,
+html[data-theme="light"] .contour-card,
+html[data-theme="light"] .modal-content,
+html[data-theme="light"] .pin-terminal,
+html[data-theme="light"] .pos-panel,
+html[data-theme="light"] .order-card,
+html[data-theme="light"] .kds-card,
+body.light-theme .card-panel,
+body.light-theme .stat-card,
+body.light-theme .contour-card,
+body.light-theme .modal-content,
+body.light-theme .pin-terminal,
+body.light-theme .pos-panel,
+body.light-theme .order-card,
+body.light-theme .kds-card,
+body.theme-light .card-panel,
+body.theme-light .stat-card,
+body.theme-light .contour-card,
+body.theme-light .modal-content {
+    background: #f4f6f9 !important;
+    color: #18181b !important;
+    border-color: #cbd2de !important;
+    box-shadow: 0 2px 6px rgba(15, 23, 42, 0.05) !important;
+}
+
+/* Автоматический перехват жестких inline-стилей темной темы (#121215, #09090b, #18181b, #fafafa) */
+html[data-theme="light"] [style*="#121215"],
+html[data-theme="light"] [style*="#09090b"],
+html[data-theme="light"] [style*="#18181b"],
+html[data-theme="light"] [style*="rgb(18, 18, 21)"],
+html[data-theme="light"] [style*="rgb(9, 9, 11)"],
+body.light-theme [style*="#121215"],
+body.light-theme [style*="#09090b"],
+body.light-theme [style*="#18181b"],
+body.theme-light [style*="#121215"],
+body.theme-light [style*="#09090b"],
+body.theme-light [style*="#18181b"] {
+    background: #f4f6f9 !important;
+    color: #18181b !important;
+    border-color: #cbd2de !important;
+}
+
+html[data-theme="light"] [style*="#27272a"],
+body.light-theme [style*="#27272a"],
+body.theme-light [style*="#27272a"] {
+    border-color: #cbd2de !important;
+}
+
+html[data-theme="light"] [style*="color:#fafafa"],
+html[data-theme="light"] [style*="color: #fafafa"],
+html[data-theme="light"] [style*="color:#fff"],
+html[data-theme="light"] [style*="color: #fff"],
+html[data-theme="light"] [style*="color:#d4d4d8"],
+body.light-theme [style*="color:#fafafa"],
+body.light-theme [style*="color: #fafafa"],
+body.light-theme [style*="color:#d4d4d8"],
+body.theme-light [style*="color:#fafafa"],
+body.theme-light [style*="color: #fafafa"] {
+    color: #18181b !important;
+}
+
+html[data-theme="light"] [style*="color:#a1a1aa"],
+html[data-theme="light"] [style*="color: #a1a1aa"],
+body.light-theme [style*="color:#a1a1aa"],
+body.light-theme [style*="color: #a1a1aa"] {
+    color: #4b5563 !important;
+}
+
+/* Таблицы, инпуты, селекты и чипы в светлой теме */
+html[data-theme="light"] table,
+body.light-theme table,
+body.theme-light table {
+    background: #f4f6f9 !important;
+    color: #18181b !important;
+    border-color: #cbd2de !important;
+}
+
+html[data-theme="light"] th,
+body.light-theme th,
+body.theme-light th {
+    background: #e2e6ee !important;
+    color: #334155 !important;
+    border-bottom: 1px solid #cbd2de !important;
+}
+
+html[data-theme="light"] td,
+body.light-theme td,
+body.theme-light td {
+    color: #18181b !important;
+    border-bottom: 1px solid #e2e6ee !important;
+}
+
+html[data-theme="light"] input,
+html[data-theme="light"] select,
+html[data-theme="light"] textarea,
+body.light-theme input,
+body.light-theme select,
+body.light-theme textarea,
+body.theme-light input,
+body.theme-light select,
+body.theme-light textarea {
+    background: #e5e9f0 !important;
+    color: #111827 !important;
+    border: 1px solid #bdc6d4 !important;
+}
+
+html[data-theme="light"] .quick-chip,
+html[data-theme="light"] .btn-back-nav,
+html[data-theme="light"] .kpi-pill,
+html[data-theme="light"] .roll-8-badge,
+body.light-theme .quick-chip,
+body.light-theme .btn-back-nav,
+body.light-theme .kpi-pill,
+body.light-theme .roll-8-badge {
+    background: #e2e6ee !important;
+    color: #1e293b !important;
+    border-color: #bdc6d4 !important;
+}
+
+html[data-theme="light"] .quick-chip:hover,
+html[data-theme="light"] .btn-back-nav:hover,
+body.light-theme .quick-chip:hover,
+body.light-theme .btn-back-nav:hover {
+    background: #ff6900 !important;
+    color: #ffffff !important;
+    border-color: #ff6900 !important;
+}
+
+/* Верхний операционный бар в светлой теме */
+html[data-theme="light"] #ultra-erp-topbar,
+html[data-theme="light"] .erp-topbar,
+html[data-theme="light"] header,
+body.light-theme #ultra-erp-topbar,
+body.light-theme .erp-topbar,
+body.light-theme header {
+    background: #dfe4ec !important;
+    border-bottom: 1px solid #c3cbd8 !important;
+    color: #18181b !important;
+}
+
+html[data-theme="light"] .metric-row,
+body.light-theme .metric-row {
+    color: #475569 !important;
+}
+html[data-theme="light"] .metric-row b,
+body.light-theme .metric-row b {
+    color: #0f172a !important;
+}
+
+/* Сохраняем белый текст на ярких акцентных кнопках */
+html[data-theme="light"] .btn,
+html[data-theme="light"] .btn-ready,
+html[data-theme="light"] .submit-btn,
+body.light-theme .btn,
+body.light-theme .btn-ready,
+body.light-theme .submit-btn {
+    color: #ffffff !important;
+}

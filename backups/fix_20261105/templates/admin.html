@@ -1,0 +1,355 @@
+<!DOCTYPE html><html lang="ru"><head><meta charset="UTF-8">
+<title>Управление ERP и Штат — КРЕВЕТКА IS</title>
+<style>
+body { margin:0; padding:20px 28px; }
+.stats { display:grid; grid-template-columns:repeat(auto-fit, minmax(200px, 1fr)); gap:14px; margin-bottom:20px; }
+.stat-card { padding:18px; }
+.stat-card h3 { margin:0 0 8px; color:var(--text-muted, #a1a1aa); font-size:11px; text-transform:uppercase; letter-spacing:0.05em; }
+.stat-card p { margin:0; font-size:26px; font-weight:800; }
+.two-cols { display:grid; grid-template-columns:1.25fr 1fr; gap:20px; margin-bottom:20px; }
+@media(max-width:1050px){ .two-cols { grid-template-columns:1fr; } }
+img.thumb { width:52px; height:52px; object-fit:cover; border-radius:6px; border:1px solid var(--border, #27272a); }
+</style></head><body>
+
+<div class="page-nav-header">
+    <div class="page-nav-left">
+        <a href="/" class="btn-back-nav">← В Кассу</a>
+        <h1 style="margin:0; font-size:20px; font-weight:800; text-transform:uppercase;">Управление точкой, Ставки персонала и Зоны курьеров</h1>
+    </div>
+    <div class="page-nav-right">
+        <form method="post" action="/admin/shop_status" style="display:flex; gap:6px; align-items:center;">
+            <span style="font-size:12px;">Режим точки:</span>
+            <button type="submit" name="status" value="auto" class="quick-chip" style="{% if shop_status == 'auto' %}border-color:#ff6900;color:#ff6900;{% endif %}">Авто (10:00–21:30)</button>
+            <button type="submit" name="status" value="open" class="quick-chip" style="{% if shop_status == 'open' %}border-color:#16a34a;color:#16a34a;{% endif %}">Открыто 24/7</button>
+            <button type="submit" name="status" value="closed" class="quick-chip" style="{% if shop_status == 'closed' %}border-color:#dc2626;color:#dc2626;{% endif %}">Тех. перерыв</button>
+        </form>
+        <a href="/accounting" class="quick-chip">Бухгалтерия (Белая / Упр.)</a>
+        <a href="/admin/backup_db" class="quick-chip">Скачать БД (.db)</a>
+    </div>
+</div>
+
+
+<div class="card-panel" style="padding:14px 18px; margin-bottom:20px; border-left:4px solid #16a34a !important; display:flex; justify-content:space-between; align-items:center; flex-wrap:wrap; gap:12px;">
+    <div>
+        <div style="font-size:13px; font-weight:800; text-transform:uppercase; color:#16a34a;">🌐 Ссылки для смартфонов: 4G Интернет + Локальный Wi-Fi</div>
+        <div style="font-size:12px; margin-top:4px;" id="tunnel-status-box">Проверка активного 4G-туннеля...</div>
+        <div style="font-size:11px; margin-top:3px; opacity:0.8;">Локальный Wi-Fi адрес (внутри точки): <b style="color:#38bdf8; font-family:monospace;">http://{{ local_ip or '192.168.0.73' }}:5000/courier</b></div>
+    </div>
+    <div style="display:flex; gap:8px; flex-wrap:wrap; align-items:center;">
+        <div id="tunnel-links-box" style="display:flex; gap:8px; flex-wrap:wrap;"></div>
+        <button type="button" class="quick-chip" onclick="restart4gTunnel()" style="font-size:11px;">🔄 Обновить 4G</button>
+    </div>
+</div>
+{% if missing_recipes and missing_recipes|length > 0 %}
+<div class="card-panel" style="padding:10px 16px; margin-bottom:16px; border-left:4px solid #eab308 !important; font-size:12px;">
+    ⚠️ <b>Аудит техкарт:</b> У {{ missing_recipes|length }} поз. меню ещё не заполнены граммовки сырья ({{ missing_recipes[:5]|join(', ') }}{% if missing_recipes|length > 5 %}...{% endif %}). Для них себестоимость сырья считается 0 ₽ (без фейковых 27%).
+</div>
+{% endif %}
+<script>
+function load4gTunnelStatus() {
+    fetch('/api/tunnel/status').then(r => r.json()).then(d => {
+        const box = document.getElementById('tunnel-status-box');
+        const links = document.getElementById('tunnel-links-box');
+        if (d.public_url && d.public_url.startsWith('https://')) {
+            box.innerHTML = `Внешний 4G-адрес активен: <b style="color:#ff6900; font-family:monospace; font-size:14px;">${d.public_url}</b>`;
+            links.innerHTML = `
+                <a href="${d.public_url}/site" target="_blank" class="quick-chip" style="border-color:#16a34a; color:#16a34a;">📱 Сайт (4G) ↗</a>
+                <a href="${d.public_url}/courier" target="_blank" class="quick-chip" style="border-color:#ff6900; color:#ff6900;">🛵 Курьер (4G) ↗</a>
+            `;
+        } else {
+            box.innerHTML = 'Поднимается SSH-туннель 4G... (авто-обновление через 3 сек)';
+            setTimeout(load4gTunnelStatus, 3000);
+        }
+    }).catch(() => {});
+}
+function restart4gTunnel() {
+    document.getElementById('tunnel-status-box').innerHTML = 'Перезапуск 4G-туннеля... подождите 4 секунды...';
+    fetch('/api/tunnel/restart', {method: 'POST'}).then(() => setTimeout(load4gTunnelStatus, 4000));
+}
+load4gTunnelStatus();
+</script>
+
+<div class="stats">
+    <div class="stat-card card-panel"><h3>Выручка (Всего)</h3><p style="color:#16a34a;">{{ stats.rev }} ₽</p></div>
+    <div class="stat-card card-panel"><h3>Выполнено заказов</h3><p>{{ stats.cnt }}</p></div>
+    <div class="stat-card card-panel"><h3>Средний чек</h3><p>{{ avg_check|round|int }} ₽</p></div>
+    <div class="stat-card card-panel"><h3>Активных смен по ПИН</h3><p style="color:#ff6900;">{{ active_staff_shifts|length }} чел.</p></div>
+</div>
+
+<!-- 1. ШТАТ СОТРУДНИКОВ, ПИН-КОДЫ, СТАВКА В ЧАС (ПОВАР/КАССИР) И ТАРИФЫ КУРЬЕРА -->
+<div class="card-panel" style="padding:18px; margin-bottom:20px;">
+    <div style="display:flex; justify-content:space-between; align-items:center; margin-bottom:14px; flex-wrap:wrap; gap:8px;">
+        <div>
+            <h2 style="margin:0; font-size:16px; text-transform:uppercase; color:#ff6900;">1. Штат сотрудников: ПИН-коды (4–6 цифр), Ставка в час (Повар/Кассир) и Тарифы курьеров</h2>
+            <p style="margin:4px 0 0; font-size:12px;">При входе по ПИН-коду открывается личная смена. Повару и кассиру начисляется почасовая оплата, а курьеру — только сдельная за каждый заказ (почасовой оплаты у курьера нет).</p>
+        </div>
+        {% if request.args.get('pin_msg') %}
+        <span class="roll-8-badge" style="color:#16a34a; border-color:#16a34a; font-size:12px; padding:6px 12px;">{{ request.args.get('pin_msg') }}</span>
+        {% endif %}
+        {% if request.args.get('pin_err') %}
+        <span class="roll-8-badge" style="color:#dc2626; border-color:#dc2626; font-size:12px; padding:6px 12px;">{{ request.args.get('pin_err') }}</span>
+        {% endif %}
+    </div>
+
+    <form method="post" action="/admin/users/add" style="display:flex; flex-wrap:wrap; gap:8px; align-items:center; margin-bottom:16px; padding:12px; border:1px solid var(--border, #27272a); border-radius:6px;">
+        <input name="username" placeholder="Имя (напр. Артем Повар)" required style="flex:1; min-width:150px;">
+        <input name="pin_code" type="text" inputmode="numeric" minlength="4" maxlength="6" placeholder="ПИН (4–6 цифр)" required style="width:130px; font-family:monospace; font-weight:700;">
+        <select name="role" style="width:145px;" onchange="toggleAddFormRole(this.value)">
+            <option value="kitchen">Повар KDS</option>
+            <option value="cashier">Кассир</option>
+            <option value="courier">Курьер</option>
+            <option value="admin">Администратор</option>
+        </select>
+
+        <!-- Поле почасовой ставки (только для Повара / Кассира / Админа) -->
+        <div id="add-hourly-wrap" style="display:inline-flex; align-items:center; gap:4px;">
+            <input name="hourly_rate" id="add-hourly-input" type="number" step="10" value="250" placeholder="₽ / час" style="width:95px; font-weight:700;" title="Ставка в час (₽/ч)">
+            <span style="font-size:11px;">₽/ч</span>
+        </div>
+
+        <!-- Поля тарифа курьера (показываются только если выбрана роль Курьер) -->
+        <div id="add-courier-wrap" style="display:none; align-items:center; gap:4px;">
+            <input name="courier_city_rate" type="number" step="10" value="150" placeholder="Город ₽" style="width:85px; font-weight:700;" title="Курьеру за заказ по городу (₽)">
+            <span>/</span>
+            <input name="courier_distant_rate" type="number" step="10" value="250" placeholder="Дальний ₽" style="width:85px; font-weight:700; color:#ff6900;" title="Курьеру за дальний район (₽)">
+            <span style="font-size:11px;">₽</span>
+        </div>
+
+        <label style="display:inline-flex; align-items:center; gap:4px; font-size:12px;"><input type="checkbox" name="can_edit_menu" value="1"> Меню/Склад</label>
+        <label style="display:inline-flex; align-items:center; gap:4px; font-size:12px;"><input type="checkbox" name="can_give_discount" value="1" checked> Скидки</label>
+        <label style="display:inline-flex; align-items:center; gap:4px; font-size:12px;"><input type="checkbox" name="can_view_finance" value="1"> Бухгалтерия</label>
+        <button type="submit" class="btn" style="padding:8px 16px; cursor:pointer;">+ Добавить</button>
+    </form>
+
+    <table>
+        <tr>
+            <th>ID</th>
+            <th>Сотрудник</th>
+            <th>ПИН (4–6 цифр)</th>
+            <th>Роль</th>
+            <th>Ставка ₽/час (Повар/Кассир)</th>
+            <th>Курьер: Город / Дальний (₽)</th>
+            <th>Права доступа</th>
+            <th>Действия</th>
+        </tr>
+        {% for u in users %}
+        <tr>
+            <form method="post" action="/admin/users/update/{{ u.id }}">
+                <td>#{{ u.id }}</td>
+                <td><input type="text" name="username" value="{{ u.username }}" required style="width:100%; min-width:130px;"></td>
+                <td>
+                    <input type="text" name="pin_code" value="{{ u.pin_code or '' }}" inputmode="numeric" minlength="4" maxlength="6" required style="width:105px; font-family:monospace; font-size:15px; font-weight:800; color:#ff6900; letter-spacing:2px; text-align:center;">
+                </td>
+                <td>
+                    <select name="role" style="width:140px;" onchange="toggleRowRole(this, {{ u.id }})">
+                        <option value="admin" {% if u.role == 'admin' %}selected{% endif %}>Администратор</option>
+                        <option value="cashier" {% if u.role == 'cashier' %}selected{% endif %}>Кассир</option>
+                        <option value="kitchen" {% if u.role == 'kitchen' %}selected{% endif %}>Повар KDS</option>
+                        <option value="courier" {% if u.role == 'courier' %}selected{% endif %}>Курьер</option>
+                    </select>
+                </td>
+                <td>
+                    <!-- Почасовая оплата: ТОЛЬКО для не-курьеров -->
+                    <div id="row-hourly-edit-{{ u.id }}" style="display:{% if u.role == 'courier' %}none{% else %}flex{% endif %}; align-items:center; gap:4px;">
+                        <input type="number" step="5" name="hourly_rate" value="{{ 0 if u.role == 'courier' else ((u.hourly_rate or 250)|int) }}" style="width:85px; font-weight:700;">
+                        <span style="font-size:11px;">₽/ч</span>
+                    </div>
+                    <span id="row-hourly-none-{{ u.id }}" style="display:{% if u.role == 'courier' %}inline-block{% else %}none{% endif %}; font-size:11px; opacity:0.55;">— (Только за заказы)</span>
+                </td>
+                <td>
+                    <!-- Город / Дальний: ТОЛЬКО для курьера -->
+                    <div id="row-courier-edit-{{ u.id }}" style="display:{% if u.role == 'courier' %}flex{% else %}none{% endif %}; align-items:center; gap:4px;" title="Слева — за заказ по городу, справа — за дальний район">
+                        <input type="number" step="10" name="courier_city_rate" value="{{ u.courier_city_rate or 150 }}" style="width:72px; font-weight:700;" title="Тариф курьера по городу">
+                        <span>/</span>
+                        <input type="number" step="10" name="courier_distant_rate" value="{{ u.courier_distant_rate or 250 }}" style="width:72px; font-weight:700; color:#ff6900;" title="Тариф курьера за дальний район">
+                        <span style="font-size:11px;">₽</span>
+                    </div>
+                    <span id="row-courier-none-{{ u.id }}" style="display:{% if u.role == 'courier' %}none{% else %}inline-block{% endif %}; font-size:12px; opacity:0.45;">—</span>
+                </td>
+                <td>
+                    <div style="display:flex; gap:8px; flex-wrap:wrap; font-size:11px;">
+                        <label style="display:inline-flex; align-items:center; gap:3px;"><input type="checkbox" name="can_edit_menu" value="1" {% if u.can_edit_menu or u.role == 'admin' %}checked{% endif %}> Меню</label>
+                        <label style="display:inline-flex; align-items:center; gap:3px;"><input type="checkbox" name="can_give_discount" value="1" {% if u.can_give_discount or u.role == 'admin' %}checked{% endif %}> Скидки</label>
+                        <label style="display:inline-flex; align-items:center; gap:3px;"><input type="checkbox" name="can_view_finance" value="1" {% if u.can_view_finance or u.role == 'admin' %}checked{% endif %}> Финансы</label>
+                    </div>
+                </td>
+                <td style="white-space:nowrap;">
+                    <button type="submit" class="btn-ready" style="padding:6px 12px; border-radius:6px; font-size:12px; font-weight:700; cursor:pointer;">Сохранить</button>
+                    {% if u.id != session.get('user_id') %}
+                    <button type="submit" formaction="/admin/users/delete/{{ u.id }}" class="quick-chip" style="color:#dc2626; margin-left:4px;" onclick="return confirm('Удалить сотрудника {{ u.username }}?');">×</button>
+                    {% endif %}
+                </td>
+            </form>
+        </tr>
+        {% endfor %}
+    </table>
+</div>
+
+<script>
+function toggleAddFormRole(role) {
+    const hWrap = document.getElementById('add-hourly-wrap');
+    const cWrap = document.getElementById('add-courier-wrap');
+    const hInput = document.getElementById('add-hourly-input');
+    if (role === 'courier') {
+        hWrap.style.display = 'none';
+        hInput.value = '0';
+        cWrap.style.display = 'inline-flex';
+    } else {
+        hWrap.style.display = 'inline-flex';
+        if (hInput.value === '0') hInput.value = '250';
+        cWrap.style.display = 'none';
+    }
+}
+
+function toggleRowRole(selectEl, uid) {
+    const isCourier = (selectEl.value === 'courier');
+    document.getElementById('row-hourly-edit-' + uid).style.display = isCourier ? 'none' : 'flex';
+    document.getElementById('row-hourly-none-' + uid).style.display = isCourier ? 'inline-block' : 'none';
+    document.getElementById('row-courier-edit-' + uid).style.display = isCourier ? 'flex' : 'none';
+    document.getElementById('row-courier-none-' + uid).style.display = isCourier ? 'none' : 'inline-block';
+}
+</script>
+
+<!-- 2. ТАБЕЛЬ ЛИЧНЫХ СМЕН ПО ПИН-КОДАМ И ТАРИФЫ РАЙОНОВ ДЛЯ КУРЬЕРОВ -->
+<div class="two-cols">
+    <!-- ЛЕВАЯ КОЛОНКА: ТАБЕЛЬ СМЕН СОТРУДНИКОВ -->
+    <div class="card-panel" style="padding:18px;">
+        <div style="display:flex; justify-content:space-between; align-items:center; margin-bottom:12px;">
+            <div>
+                <h3 style="margin:0; font-size:14px; text-transform:uppercase; color:#16a34a;">2. Табель смен сотрудников (Открываются по ПИН)</h3>
+                <p style="margin:3px 0 0; font-size:12px;">Автоматический подсчет отработанных часов (Повар/Кассир) и развозов (Курьер).</p>
+            </div>
+        </div>
+        <table>
+            <tr>
+                <th>Сотрудник</th>
+                <th>Открыта</th>
+                <th>Часы</th>
+                <th>По часам</th>
+                <th>Заказы курьера</th>
+                <th>Итого</th>
+                <th>Статус</th>
+            </tr>
+            {% for ss in staff_shifts %}
+            <tr>
+                <td><b>{{ ss.username }}</b> <span class="roll-8-badge">{{ ss.role }}</span></td>
+                <td style="font-size:11px;">{{ ss.opened_at[5:16] }}</td>
+                <td>{% if ss.role == 'courier' %}<span style="opacity:0.5;">—</span>{% else %}<b>{{ ss.hours_worked }} ч</b> <span style="font-size:11px;">({{ ss.hourly_rate|int }} ₽/ч)</span>{% endif %}</td>
+                <td>{% if ss.role == 'courier' %}<span style="opacity:0.5;">—</span>{% else %}{{ ss.hourly_pay }} ₽{% endif %}</td>
+                <td>{% if ss.role == 'courier' %}<b>{{ ss.orders_delivered }} шт. ({{ ss.delivery_pay }} ₽)</b>{% else %}<span style="opacity:0.5;">—</span>{% endif %}</td>
+                <td style="font-weight:800; color:#ff6900;">{{ ss.total_pay }} ₽</td>
+                <td style="white-space:nowrap;">
+                    {% if ss.status == 'open' %}
+                    <form method="post" action="/admin/staff_shift/close/{{ ss.id }}" style="display:inline;">
+                        <button type="submit" class="quick-chip" style="color:#16a34a; border-color:#16a34a;">Закрыть</button>
+                    </form>
+                    {% else %}
+                    <span class="roll-8-badge">Закрыта</span>
+                    {% endif %}
+                    <form method="post" action="/admin/staff_shift/delete/{{ ss.id }}" style="display:inline;" onsubmit="return confirm('Удалить эту смену из табеля?');">
+                        <button type="submit" class="quick-chip" style="color:#dc2626; padding:3px 7px;" title="Удалить смену">×</button>
+                    </form>
+                </td>
+            </tr>
+            {% endfor %}
+        </table>
+    </div>
+
+    <!-- ПРАВАЯ КОЛОНКА: РЕДАКТОР ТАРИФОВ КУРЬЕРУ ПО РАЙОНАМ -->
+    <div class="card-panel" style="padding:18px;">
+        <h3 style="margin:0 0 6px 0; font-size:14px; text-transform:uppercase; color:#ff6900;">3. Начисление курьеру по районам (Город / Дальние)</h3>
+        <p style="margin:0 0 12px 0; font-size:12px;">Укажите, сколько получает курьер за каждый заказ в конкретный район (по умолчанию 150 ₽ в городе и больше за отдаленные районы).</p>
+
+        <form method="post" action="/admin/zone_rate/add" style="display:flex; gap:6px; margin-bottom:12px; flex-wrap:wrap;">
+            <input name="name" placeholder="Район (напр. Верхняя Инта)" required style="flex:1; min-width:130px;">
+            <input name="fee" type="number" placeholder="Для клиента (₽)" required style="width:125px;">
+            <input name="courier_payout" type="number" placeholder="Курьеру (₽)" value="250" required style="width:115px;">
+            <select name="is_distant" style="width:120px;">
+                <option value="0">Город (150 ₽)</option>
+                <option value="1" selected>Дальний район</option>
+            </select>
+            <button type="submit" class="btn" style="padding:8px 12px;">+ Район</button>
+        </form>
+
+        <table>
+            <tr>
+                <th>Район доставки</th>
+                <th>Тип зоны</th>
+                <th>Клиент платит</th>
+                <th>Курьеру за заказ</th>
+                <th></th>
+            </tr>
+            {% for z in zones %}
+            <tr>
+                <form method="post" action="/admin/zone_rate/update/{{ z.id }}">
+                    <td><input type="text" name="name" value="{{ z.name }}" style="width:100%; min-width:110px;"></td>
+                    <td>
+                        <select name="is_distant" style="width:115px;">
+                            <option value="0" {% if not z.is_distant %}selected{% endif %}>Город</option>
+                            <option value="1" {% if z.is_distant %}selected{% endif %}>Дальний</option>
+                        </select>
+                    </td>
+                    <td><input type="number" name="fee" value="{{ z.fee|int }}" style="width:75px;"> ₽</td>
+                    <td><input type="number" name="courier_payout" value="{{ z.courier_payout or 150 }}" style="width:80px; font-weight:800; color:#16a34a;"> ₽</td>
+                    <td style="white-space:nowrap;">
+                        <button type="submit" class="quick-chip" style="color:#16a34a;">💾</button>
+                        <button type="submit" formaction="/admin/zone_rate/delete/{{ z.id }}" class="quick-chip" style="color:#dc2626;">×</button>
+                    </td>
+                </form>
+            </tr>
+            {% endfor %}
+        </table>
+    </div>
+</div>
+
+<!-- 4. МАТРИЦА МЕНЮ И ТЕХКАРТЫ -->
+<div class="card-panel" style="padding:18px;">
+    <div style="display:flex; justify-content:space-between; align-items:center; margin-bottom:14px;">
+        <h2 style="margin:0; font-size:16px; text-transform:uppercase;">4. Матрица меню и техкарты</h2>
+        <span class="roll-8-badge">Стандарт выхода роллов: 8 шт.</span>
+    </div>
+
+    <form method="post" action="/admin/menu/add" enctype="multipart/form-data" style="display:flex; flex-wrap:wrap; gap:8px; margin-bottom:16px; padding:12px; border:1px solid var(--border, #27272a); border-radius:6px;">
+        <input name="name" placeholder="Название позиции" required style="width:180px;">
+        <input name="price" type="number" placeholder="Цена (₽)" required style="width:95px;">
+        <input name="category" placeholder="Категория (Роллы)" required style="width:140px;">
+        <input name="sort_weight" type="number" placeholder="Приоритет" style="width:95px;">
+        <input name="composition" placeholder="Состав (для витрины)" style="flex:1; min-width:180px;">
+        <input type="file" name="image" accept="image/*" style="width:190px; padding:5px;">
+        <button type="submit" class="btn" style="padding:8px 16px; cursor:pointer;">+ Добавить позицию</button>
+    </form>
+
+    <table>
+        <tr><th>Фото</th><th>Наименование и состав</th><th>Категория</th><th>Цена продажи</th><th>Статус</th><th>Управление</th></tr>
+        {% for m in menu %}
+        <tr>
+            <td>{% if m.image %}<img src="/static/uploads/{{ m.image }}" class="thumb">{% else %}<div style="width:52px;height:52px;border:1px solid #cbd2de;border-radius:6px;display:flex;align-items:center;justify-content:center;font-size:10px;">Нет</div>{% endif %}</td>
+            <td>
+                <div style="font-weight:700;">{{ m.name }}</div>
+                <div style="font-size:12px; margin-top:2px; opacity:0.75;">{{ m.composition or 'Состав не указан' }}</div>
+            </td>
+            <td><span class="roll-8-badge">{{ m.category }}</span></td>
+            <td style="font-weight:800; font-size:15px; color:#ff6900;">{{ m.price }} ₽</td>
+            <td>
+                {% if m.stop_list %}
+                <span class="roll-8-badge" style="color:#dc2626; border-color:#dc2626;">В СТОП-ЛИСТЕ</span>
+                {% else %}
+                <span class="roll-8-badge" style="color:#16a34a; border-color:#16a34a;">АКТИВЕН</span>
+                {% endif %}
+            </td>
+            <td>
+                <div style="display:flex; gap:6px;">
+                    <a href="/admin/menu/edit/{{ m.id }}" class="quick-chip">Техкарта / Ред.</a>
+                    <form method="post" action="/admin/menu/stop/{{ m.id }}" style="display:inline;">
+                        <button type="submit" class="quick-chip">{% if m.stop_list %}Снять стоп{% else %}В стоп-лист{% endif %}</button>
+                    </form>
+                    <form method="post" action="/admin/menu/delete/{{ m.id }}" style="display:inline;" onsubmit="return confirm('Удалить позицию из меню?');">
+                        <button type="submit" class="quick-chip" style="color:#dc2626;">Удалить</button>
+                    </form>
+                </div>
+            </td>
+        </tr>
+        {% endfor %}
+    </table>
+</div>
+</body></html>

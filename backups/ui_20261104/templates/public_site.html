@@ -1,0 +1,309 @@
+<!DOCTYPE html><html lang="ru"><head><meta charset="UTF-8"><meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>{{ brand_name }} — Доставка роллов в {{ brand_city }}</title>
+<link rel="manifest" href="/manifest.json">
+<style>
+body { margin:0; padding:0 !important; }
+.hero {
+    background: linear-gradient(180deg, rgba(17,24,39,0.95), rgba(7,10,18,0.95));
+    padding: 32px 20px; text-align: center; border-bottom: 1px solid rgba(255,107,0,0.3);
+}
+.hero h1 { margin:0; font-size:38px; font-weight:900; color:#ff6b00; letter-spacing:1.5px; }
+.hero p { margin:8px 0 0; color:#cbd5e1; font-size:15px; }
+.container { max-width:1240px; margin:0 auto; padding:24px 20px; display:flex; gap:24px; align-items:flex-start; }
+@media(max-width:850px){ .container { flex-direction:column; } }
+.menu-section { flex: 2.2; width: 100%; }
+.cart-section { flex: 1; width: 100%; min-width: 330px; padding: 22px; position: sticky; top: 20px; }
+.tabs { display:flex; gap:10px; margin-bottom:18px; overflow-x:auto; padding-bottom:6px; }
+.grid { display:grid; grid-template-columns:repeat(auto-fill, minmax(220px, 1fr)); gap:18px; }
+.item { overflow:hidden; display:flex; flex-direction:column; justify-content:space-between; }
+.item img { width:100%; height:165px; object-fit:cover; }
+.item-info { padding:15px; flex:1; display:flex; flex-direction:column; justify-content:space-between; }
+.field { margin:10px 0; }
+.field input, .field select { width:100%; }
+</style></head><body>
+
+<div id="client-active-order-bar" style="display:none; background:#18181b; border-bottom:1px solid #ff6900; padding:10px 20px; text-align:center; font-size:13px; font-weight:600;">
+    <span id="client-active-order-text">У вас есть активный заказ</span>
+    <a id="client-active-order-link" href="/track/1" style="color:#ff6900; margin-left:12px; text-decoration:underline; font-weight:700;">Отследить статус →</a>
+</div>
+<div class="hero">
+    <h1> {{ brand_name }}</h1>
+    <p> {{ brand_city }}, {{ brand_address }} •  {{ brand_phone }} • Стандарт роллов: 8 кусочков</p>
+</div>
+
+<div class="container">
+    <div class="menu-section">
+        <input type="text" id="site-search" placeholder=" Найти любимый ролл (Филадельфия, Лава, Дракон, Креветка)..." oninput="filterSiteMenu()" style="width:100%; margin-bottom:14px; font-size:15px;">
+        <div class="tabs">
+            <div class="tab active" onclick="selectSiteCat('all', this)">Все меню</div>
+            {% for cat in categories %}<div class="tab" onclick="selectSiteCat('{{ cat.category }}', this)">{{ cat.category }}</div>{% endfor %}
+        </div>
+        <div class="grid" id="site-grid">
+            {% for item in menu %}
+            <div class="item" data-cat="{{ item.category }}" data-name="{{ item.name|lower }} {{ (item.composition or '')|lower }}">
+                <div>
+                    {% if item.image %}
+                    <img src="/static/uploads/{{ item.image }}" alt="{{ item.name }}">
+                    {% else %}
+                    <div style="height:165px; display:flex; align-items:center; justify-content:center; color:#64748b;">Фото готовится</div>
+                    {% endif %}
+                </div>
+                <div class="item-info">
+                    <div>
+                        <div style="display:flex; justify-content:space-between; align-items:flex-start; gap:6px; margin-bottom:6px;">
+                            <h3 style="margin:0; font-size:16px;">{{ item.name }}</h3>
+                            {% if item.category == 'Роллы' %}<span class="roll-8-badge">8 шт.</span>{% endif %}
+                        </div>
+                        <div style="font-size:12px; color:#94a3b8; margin-bottom:12px; line-height:1.4;">{{ item.composition or 'Фирменный рецепт шеф-повара' }}</div>
+                    </div>
+                    <div>
+                        <div style="display:flex; justify-content:space-between; align-items:center; margin-bottom:10px;">
+                            <span style="font-size:20px; font-weight:900; color:#ff6b00;">{{ item.price }} ₽</span>
+                        </div>
+                        <button class="btn-add" style="width:100%; padding:11px; cursor:pointer;" onclick="addToCart({{ item.id }}, '{{ item.name }}', {{ item.price }})">+ В корзину</button>
+                    </div>
+                </div>
+            </div>
+            {% endfor %}
+        </div>
+    </div>
+
+    <div class="cart-section">
+        <h2 style="margin-top:0; color:#ff6b00;"> Ваш заказ</h2>
+        <div id="cart-items" style="margin-bottom:12px;"></div>
+
+        <div class="field"><input id="phone" placeholder=" Ваш телефон (бонусы и авто-адрес)" oninput="checkProfile()"></div>
+        <div id="client-greeting" style="display:none; background:rgba(16,185,129,0.14); border:1px solid rgba(16,185,129,0.35); padding:9px 12px; border-radius:10px; font-size:12px; margin-bottom:10px;"></div>
+
+        <div class="field">
+            <select id="delivery_type" onchange="toggleSiteAddress()">
+                <option value="доставка"> Доставка курьером</option>
+                <option value="самовывоз"> Самовывоз ({{ brand_address }})</option>
+            </select>
+        </div>
+
+        <div class="field" id="zone-field">
+            <select id="delivery_zone" onchange="calcTotal()">
+                {% for z in zones %}
+                <option value="{{ z.price }}">{{ z.name }} (Доставка: {{ z.price }} ₽)</option>
+                {% else %}
+                <option value="0">г. Инта — Центр (0 ₽)</option>
+                {% endfor %}
+            </select>
+        </div>
+
+        <div class="field" id="address-field"><input id="address" placeholder=" Улица, дом, квартира в г. Инта"></div>
+        <div class="field"><input id="comment" placeholder=" Комментарий, код домофона"></div>
+
+        <div style="display:flex; gap:6px; margin:10px 0;">
+            <input id="promo_input" placeholder="Промокод (напр. SUSHI10)" style="flex:1; text-transform:uppercase;">
+            <button class="quick-chip" onclick="applyPromo()">Применить</button>
+        </div>
+        <div id="promo_msg" style="font-size:12px; display:none; margin-bottom:8px; font-weight:700;"></div>
+
+        <div class="field">
+            <select id="payment_method" onchange="toggleChangeInput()">
+                <option value="карта"> Картой при получении</option>
+                <option value="наличные"> Наличными курьеру</option>
+            </select>
+        </div>
+        <div class="field" id="change-field" style="display:none;">
+            <input type="number" id="change_from" placeholder="С какой купюры подготовить сдачу?">
+        </div>
+
+        <div style="display:flex; justify-content:space-between; align-items:center; margin:16px 0; font-size:22px; font-weight:900;">
+            <span>Итого:</span>
+            <span id="total" style="color:#ff6b00;">0 ₽</span>
+        </div>
+
+        <button class="btn-submit" style="width:100%; padding:15px; font-size:17px; cursor:pointer;" onclick="submitOrder()"> Оформить доставку</button>
+    </div>
+</div>
+
+<script>
+let siteCat = 'all';
+let cart = [];
+let lastOrder = [];
+let currentPromo = { code: '', type: '', value: 0 };
+
+function selectSiteCat(cat, btn){
+    siteCat = cat;
+    document.querySelectorAll('.tab').forEach(t=>t.classList.remove('active'));
+    btn.classList.add('active');
+    filterSiteMenu();
+}
+
+function filterSiteMenu(){
+    const q = document.getElementById('site-search').value.toLowerCase();
+    document.querySelectorAll('#site-grid .item').forEach(el => {
+        const mCat = (siteCat === 'all' || el.dataset.cat === siteCat);
+        const mQ = el.dataset.name.includes(q);
+        el.style.display = (mCat && mQ) ? 'flex' : 'none';
+    });
+}
+
+function addToCart(id, name, price){
+    const ex = cart.find(i => i.id === id);
+    if(ex) ex.qty++;
+    else cart.push({ id, name, price, qty: 1 });
+    renderCart();
+
+const savedOrdId = localStorage.getItem('krevetka_last_order_id');
+if (savedOrdId) {
+    fetch('/api/track_order/' + savedOrdId).then(r=>r.json()).then(d => {
+        if (d && d.status && d.status !== 'done' && d.status !== 'cancelled') {
+            document.getElementById('client-active-order-bar').style.display = 'block';
+            document.getElementById('client-active-order-text').innerText = `Ваш заказ #${savedOrdId} на сумму ${d.total} ₽ в работе`;
+            document.getElementById('client-active-order-link').href = '/track/' + savedOrdId;
+        }
+    }).catch(()=>{});
+}
+
+}
+
+function renderCart(){
+    const c = document.getElementById('cart-items');
+    c.innerHTML = '';
+    if(cart.length === 0){
+        c.innerHTML = '<div style="color:#94a3b8; font-size:13px; text-align:center; padding:18px 0;">Корзина пока пуста</div>';
+        calcTotal(); return;
+    }
+    cart.forEach((it, idx) => {
+        c.innerHTML += `<div style="display:flex; justify-content:space-between; align-items:center; padding:8px 0; border-bottom:1px solid var(--border); font-size:14px;">
+            <span>${it.name} <b style="color:#ff6b00;">×${it.qty}</b></span>
+            <span>${it.price * it.qty} ₽ <button onclick="cart.splice(${idx},1);renderCart();
+
+const savedOrdId = localStorage.getItem('krevetka_last_order_id');
+if (savedOrdId) {
+    fetch('/api/track_order/' + savedOrdId).then(r=>r.json()).then(d => {
+        if (d && d.status && d.status !== 'done' && d.status !== 'cancelled') {
+            document.getElementById('client-active-order-bar').style.display = 'block';
+            document.getElementById('client-active-order-text').innerText = `Ваш заказ #${savedOrdId} на сумму ${d.total} ₽ в работе`;
+            document.getElementById('client-active-order-link').href = '/track/' + savedOrdId;
+        }
+    }).catch(()=>{});
+}
+" style="background:none;border:none;color:#ef4444;cursor:pointer;">✖</button></span>
+        </div>`;
+    });
+    calcTotal();
+}
+
+function checkProfile(){
+    const phone = document.getElementById('phone').value.trim();
+    if(phone.length >= 6){
+        fetch('/api/site/client/' + encodeURIComponent(phone)).then(r=>r.json()).then(d=>{
+            const box = document.getElementById('client-greeting');
+            if(d.success){
+                if(d.address && !document.getElementById('address').value) document.getElementById('address').value = d.address;
+                lastOrder = d.last_order || [];
+                box.style.display = 'block';
+                box.innerHTML = `<div style="display:flex; justify-content:space-between; align-items:center;">
+                    <span> Рады видеть вас снова! Адрес подставлен.</span>
+                    ${lastOrder.length > 0 ? `<button class="quick-chip" onclick="repeatLastOrder()"> Повторить прошлый заказ</button>` : ''}
+                </div>`;
+            } else {
+                box.style.display = 'none';
+            }
+        });
+    }
+}
+
+function repeatLastOrder(){
+    if(lastOrder.length > 0){
+        cart = lastOrder.map(i => ({ id: i.menu_id || i.id, name: i.name, price: i.price, qty: i.qty }));
+        renderCart();
+
+const savedOrdId = localStorage.getItem('krevetka_last_order_id');
+if (savedOrdId) {
+    fetch('/api/track_order/' + savedOrdId).then(r=>r.json()).then(d => {
+        if (d && d.status && d.status !== 'done' && d.status !== 'cancelled') {
+            document.getElementById('client-active-order-bar').style.display = 'block';
+            document.getElementById('client-active-order-text').innerText = `Ваш заказ #${savedOrdId} на сумму ${d.total} ₽ в работе`;
+            document.getElementById('client-active-order-link').href = '/track/' + savedOrdId;
+        }
+    }).catch(()=>{});
+}
+
+    }
+}
+
+function toggleSiteAddress(){
+    const isSelf = document.getElementById('delivery_type').value === 'самовывоз';
+    document.getElementById('address-field').style.display = isSelf ? 'none' : 'block';
+    document.getElementById('zone-field').style.display = isSelf ? 'none' : 'block';
+    calcTotal();
+}
+
+function toggleChangeInput(){
+    document.getElementById('change-field').style.display = document.getElementById('payment_method').value === 'наличные' ? 'block' : 'none';
+}
+
+function applyPromo(){
+    const code = document.getElementById('promo_input').value.trim().toUpperCase();
+    const msg = document.getElementById('promo_msg');
+    if(!code) return;
+    fetch('/api/check_promo', {method:'POST', headers:{'Content-Type':'application/json'}, body:JSON.stringify({code})})
+    .then(r=>r.json()).then(d=>{
+        if(d.success){
+            currentPromo = { code, type: d.type, value: d.value };
+            msg.style.display = 'block'; msg.style.color = '#10b981'; msg.innerText = '✓ Промокод активирован!';
+            calcTotal();
+        } else {
+            msg.style.display = 'block'; msg.style.color = '#ef4444'; msg.innerText = '× ' + d.error;
+        }
+    });
+}
+
+function calcTotal(){
+    const sub = cart.reduce((s,i)=>s+i.price*i.qty, 0);
+    let total = sub;
+    if(currentPromo.code){
+        let disc = currentPromo.type === 'percent' ? Math.round(sub * currentPromo.value / 100) : currentPromo.value;
+        total = Math.max(0, total - disc);
+    }
+    if(document.getElementById('delivery_type').value === 'доставка' && sub > 0){
+        const deliv = parseInt(document.getElementById('delivery_zone')?.value || 0);
+        total += deliv;
+    }
+    document.getElementById('total').innerText = total + ' ₽';
+}
+
+function submitOrder(){
+    if(cart.length === 0) return alert('Добавьте роллы в корзину!');
+    const phone = document.getElementById('phone').value.trim();
+    const delivery_type = document.getElementById('delivery_type').value;
+    const address = document.getElementById('address').value.trim();
+    if(!phone) return alert('Укажите ваш телефон!');
+    if(delivery_type === 'доставка' && !address) return alert('Укажите адрес доставки в г. Инта!');
+    const delivery_price = delivery_type === 'доставка' ? parseInt(document.getElementById('delivery_zone')?.value || 0) : 0;
+
+    fetch('/api/public_order', {
+        method:'POST', headers:{'Content-Type':'application/json'},
+        body:JSON.stringify({
+            items: cart, phone, address, delivery_type, delivery_price,
+            comment: document.getElementById('comment').value,
+            promo_code: currentPromo.code,
+            payment_method: document.getElementById('payment_method').value,
+            change_from: parseInt(document.getElementById('change_from').value) || 0
+        })
+    }).then(r=>r.json()).then(d=>{
+        if(d.success){
+            window.location.href = '/track/' + d.order_id;
+        } else alert(d.error || 'Ошибка');
+    });
+}
+renderCart();
+
+const savedOrdId = localStorage.getItem('krevetka_last_order_id');
+if (savedOrdId) {
+    fetch('/api/track_order/' + savedOrdId).then(r=>r.json()).then(d => {
+        if (d && d.status && d.status !== 'done' && d.status !== 'cancelled') {
+            document.getElementById('client-active-order-bar').style.display = 'block';
+            document.getElementById('client-active-order-text').innerText = `Ваш заказ #${savedOrdId} на сумму ${d.total} ₽ в работе`;
+            document.getElementById('client-active-order-link').href = '/track/' + savedOrdId;
+        }
+    }).catch(()=>{});
+}
+
+</script></body></html>

@@ -1,0 +1,38 @@
+<!DOCTYPE html><html lang="ru"><head><meta name="csrf-token" content="{{ csrf_token() }}"><script src="/static/security.js"></script><meta charset="UTF-8"><meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Оцените заказ — Креветка</title>
+<style>
+body{font-family:-apple-system,sans-serif;background:#0a0a0a;color:#fff;margin:0;display:flex;align-items:center;justify-content:center;height:100vh}
+.box{background:#151515;padding:40px;border-radius:20px;text-align:center;border:1px solid #333;max-width:400px;width:90%}
+h1{color:#ff7a00;margin-top:0}
+.stars{display:flex;justify-content:center;gap:15px;margin:30px 0;font-size:50px;cursor:pointer;}
+.star{color:#333;transition:0.2s;}
+.star:hover, .star.active{color:#ffd700;text-shadow:0 0 20px rgba(255,215,0,0.5)}
+.btn{background:#ff7a00;color:#000;border:none;padding:15px 40px;border-radius:10px;font-size:18px;font-weight:bold;cursor:pointer;margin-top:20px;}
+</style><link rel="stylesheet" href="/static/pro_style.css">
+</head><body>
+<div class="box">
+    <h1>Оцените заказ!</h1>
+    <p style="color:#888">Заказ #{{ order.id }} на сумму {{ order.total }} ₽</p>
+    <form method="POST" id="rateForm">
+        <input type="hidden" name="rating" id="ratingInput" value="5">
+        <div class="stars">
+            <span class="star" onclick="setRating(1)">★</span>
+            <span class="star" onclick="setRating(2)">★</span>
+            <span class="star" onclick="setRating(3)">★</span>
+            <span class="star" onclick="setRating(4)">★</span>
+            <span class="star active" onclick="setRating(5)">★</span>
+        </div>
+        <button type="submit" class="btn">Отправить</button>
+    </form>
+</div>
+<script>
+function setRating(val){
+    document.getElementById('ratingInput').value = val;
+    const stars = document.querySelectorAll('.star');
+    stars.forEach((s, i) => {
+        if(i < val) s.classList.add('active');
+        else s.classList.remove('active');
+    });
+}
+</script>
+</body></html>

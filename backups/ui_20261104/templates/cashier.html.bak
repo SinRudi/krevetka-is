@@ -1,0 +1,621 @@
+<!DOCTYPE html><html lang="ru"><head><meta charset="UTF-8">
+<title>Супер Касса — Креветка</title>
+<style>
+:root {
+    --bg-main: #0a0a0a; --bg-panel: #121212; --bg-card: #1c1c1e; --bg-input: #0a0a0a;
+    --text-main: #ffffff; --text-muted: #888888; --border: #333333;
+    --accent: #ff7a00; --accent-text: #000000; --btn-grey: #2c2c2e;
+    /* Цвета статусов */
+    --status-new: #ffd60a; --status-cooking: #ff9f0a; --status-ready: #30d158; --status-delivering: #af52de; --status-done: #555555; --status-cancelled: #ff453a;
+}
+body.light-theme {
+    --bg-main: #e9ecef; --bg-panel: #ffffff; --bg-card: #ffffff; --bg-input: #f8f9fa;
+    --text-main: #212529; --text-muted: #6c757d; --border: #ced4da;
+    --accent: #ff7a00; --accent-text: #ffffff; --btn-grey: #dee2e6;
+    --status-new: #e0a800; --status-cooking: #d97706; --status-ready: #059669; --status-delivering: #7c3aed; --status-done: #9ca3af; --status-cancelled: #dc2626;
+}
+body{font-family:-apple-system,sans-serif;background:var(--bg-main);color:var(--text-main);margin:0;display:flex;height:100vh;overflow:hidden; transition: background 0.3s, color 0.3s;}
+.menu{flex:2;padding:20px;overflow-y:auto;display:flex;flex-direction:column}
+.cart{flex:1;background:var(--bg-panel);padding:20px;display:flex;flex-direction:column;border-left:1px solid var(--border);min-width:380px;overflow-y:auto}
+h2{margin-top:0}.topbar{display:flex;justify-content:space-between;align-items:center;margin-bottom:15px}
+.tabs{display:flex;gap:10px;margin-bottom:15px;flex-wrap:wrap}
+.tab{background:var(--bg-card);border:1px solid var(--border);color:var(--text-muted);padding:8px 16px;border-radius:20px;cursor:pointer;font-weight:bold;transition:0.2s;user-select:none}
+.tab:hover{border-color:var(--accent);color:var(--accent)}.tab.active{background:var(--accent);color:var(--accent-text);border-color:var(--accent)}
+.grid{display:grid;grid-template-columns:repeat(auto-fill,minmax(150px,1fr));gap:15px;flex:1;align-content:start}
+.item{background:var(--bg-card);padding:15px;border-radius:10px;cursor:pointer;border:1px solid var(--border);transition:.2s;user-select:none}
+.item:hover{border-color:var(--accent)}
+.item.stop{opacity:0.5;cursor:not-allowed;background:#331111;border-color:#ff453a}.item.stop h3{text-decoration:line-through;color:#ff453a}
+.item h3{margin:0 0 5px;font-size:16px}.item p{margin:0;color:var(--accent);font-weight:bold}
+.cart-items{flex:1;overflow-y:auto;margin-bottom:10px;min-height:100px}
+.cart-item{display:flex;justify-content:space-between;padding:8px 0;border-bottom:1px solid var(--border);font-size:15px}
+.field{margin:8px 0}.field input,.field textarea,.field select{width:100%;box-sizing:border-box;background:var(--bg-input);color:var(--text-main);border:1px solid var(--border);border-radius:8px;padding:10px;transition:0.2s}
+.field input:focus,.field textarea:focus,.field select:focus{outline:none;border-color:var(--accent)}
+.total{font-size:28px;font-weight:bold;text-align:right;margin:10px 0;color:var(--accent)}
+.btn-submit{background:var(--accent);color:var(--accent-text);border:none;padding:15px;border-radius:10px;font-size:18px;font-weight:bold;cursor:pointer;width:100%;transition:0.2s}
+.btn-submit:hover{opacity:0.9}
+.btn-cancel{background:var(--btn-grey);color:var(--text-main);border:1px solid var(--border);padding:10px;border-radius:8px;cursor:pointer;margin-top:8px;width:100%}
+.search-bar{width:100%;padding:12px;border-radius:8px;background:var(--bg-card);border:1px solid var(--border);color:var(--text-main);margin-bottom:15px;font-size:16px;box-sizing:border-box}
+.search-bar:focus{outline:none;border-color:var(--accent)}
+.bonus-box{background:var(--bg-card);padding:10px;border-radius:8px;border:1px solid var(--accent);margin-bottom:10px;display:none}
+.sched-btn{background:var(--bg-card);color:var(--text-main);border:1px solid var(--border);padding:6px 10px;border-radius:5px;cursor:pointer;font-size:13px;margin-right:4px;margin-bottom:4px;transition:0.2s}
+.sched-btn:hover{border-color:var(--accent);color:var(--accent)}
+.change-box{background:var(--accent);color:var(--accent-text);padding:8px;border-radius:8px;text-align:center;font-weight:bold;margin-top:5px;display:none}
+.modal-overlay{position:fixed;top:0;left:0;right:0;bottom:0;background:rgba(0,0,0,0.6);display:none;align-items:center;justify-content:center;z-index:100}
+.modal-content{background:var(--bg-panel);padding:20px;border-radius:15px;width:650px;max-width:95%;max-height:90vh;overflow-y:auto;border:1px solid var(--border); box-shadow: 0 10px 30px rgba(0,0,0,0.3);}
+
+/* СТИЛИ ДЛЯ ЗАКАЗОВ В СТИЛЕ IIKO */
+.order-card{background:var(--bg-card); border-radius:12px; padding:16px; margin-bottom:12px; border-left:6px solid var(--border); transition: 0.2s; display:flex; flex-direction:column; gap:8px; box-shadow: 0 2px 5px rgba(0,0,0,0.1);}
+.order-card.new{border-left-color:var(--status-new)}
+.order-card.cooking{border-left-color:var(--status-cooking)}
+.order-card.ready{border-left-color:var(--status-ready)}
+.order-card.delivering{border-left-color:var(--status-delivering)}
+.order-card.done{border-left-color:var(--status-done); opacity:0.6;}
+.order-card.cancelled{border-left-color:var(--status-cancelled); opacity:0.6;}
+.order-card.scheduled { border: 2px solid #0a84ff; border-left-width: 6px; }
+
+.order-header{display:flex; justify-content:space-between; align-items:center; border-bottom:1px solid var(--border); padding-bottom:10px; margin-bottom:4px;}
+.order-id{font-size:20px; font-weight:bold; color:var(--accent);}
+.order-status{font-size:12px; font-weight:bold; text-transform:uppercase; padding:4px 8px; border-radius:6px; background:rgba(255,255,255,0.1);}
+.order-status.new{background:var(--status-new); color:#000;}
+.order-status.cooking{background:var(--status-cooking); color:#000;}
+.order-status.ready{background:var(--status-ready); color:#000;}
+.order-status.delivering{background:var(--status-delivering); color:#fff;}
+.order-status.done{background:var(--status-done); color:#fff;}
+.order-status.cancelled{background:var(--status-cancelled); color:#fff;}
+
+.order-time{color:var(--text-muted); font-size:13px;}
+.order-items{list-style:none; padding:0; margin:0; display:flex; flex-direction:column; gap:4px;}
+.order-item{display:flex; justify-content:space-between; font-size:14px;}
+.order-info{font-size:13px; color:var(--text-muted); display:flex; flex-direction:column; gap:4px; margin-top:4px;}
+.order-total{font-size:18px; font-weight:bold; text-align:right; color:var(--text-main); margin-top:4px;}
+
+/* Стили для кнопок в карточке */
+.order-actions{display:flex; gap:8px; margin-top:8px; flex-wrap:wrap;}
+.order-actions button{flex:1; padding:8px; border-radius:6px; border:none; font-weight:bold; cursor:pointer; font-size:13px; min-width:80px; transition: 0.2s;}
+.order-actions button:hover{opacity:0.8;}
+.btn-edit{background:var(--status-new); color:#000;}
+.btn-print{background:#0a84ff; color:#fff;}
+.btn-cook{background:var(--status-cooking); color:#000;}
+.btn-ready{background:var(--status-ready); color:#000;}
+.btn-courier{background:var(--status-delivering); color:#fff;}
+.btn-done{background:var(--status-ready); color:#000;}
+.btn-cancel{background:var(--status-cancelled); color:#fff;}
+
+/* ПАНЕЛЬ ФИЛЬТРОВ */
+.filter-panel{background:var(--bg-panel); padding:10px 20px; border-radius:10px; border:1px solid var(--border); margin-bottom:20px; display:flex; gap:15px; align-items:center; flex-wrap:wrap;}
+.filter-panel input, .filter-panel select {background:var(--bg-input); color:var(--text-main); border:1px solid var(--border); padding:8px 12px; border-radius:6px; font-size:14px;}
+.filter-panel button {background:var(--accent); color:var(--accent-text); border:none; padding:8px 15px; border-radius:6px; font-weight:bold; cursor:pointer;}
+
+/* ПОДСВЕТКА АКТИВНЫХ (все заказы) */
+.order-card.active-glow { box-shadow: 0 0 10px rgba(255, 122, 0, 0.2); }
+/* Скрываем ненужное в полноэкранном режиме */
+#allOrdersModal .orders-grid { display:grid; grid-template-columns: repeat(auto-fill, minmax(340px, 1fr)); gap:20px; overflow-y:auto; flex:1; align-content: start;}
+
+#scheduled_time{position:absolute;opacity:0;width:0;height:0;padding:0;border:none;pointer-events:none;}
+.closed-banner{background:#ff453a;color:#fff;text-align:center;padding:10px;font-weight:bold;font-size:16px;border-radius:8px;margin-bottom:15px;}
+.theme-btn{background:var(--bg-card);color:var(--text-main);border:1px solid var(--border);padding:6px 10px;border-radius:8px;cursor:pointer;font-size:16px;margin-left:12px;}
+.btn-sound{background:#ff453a; color:#fff; border:none; padding:6px 12px; border-radius:8px; font-weight:bold; cursor:pointer; margin-left:10px;}
+.btn-sound.on{background:#30d158; color:#000;}
+
+/* Стили для редактирования */
+.edit-item-row { display: flex; justify-content: space-between; align-items: center; margin-bottom: 8px; padding: 8px; background: var(--bg-input); border-radius: 8px; border: 1px solid var(--border);}
+.edit-item-row input { width: 50px; text-align: center; background: var(--bg-main); color: var(--text-main); border: 1px solid var(--border); border-radius: 5px; padding: 4px;}
+.add-item-select { width: 100%; padding: 10px; margin-top: 10px; background: var(--bg-input); color: var(--text-main); border: 1px solid var(--border); border-radius: 8px;}
+</style>
+<script>
+    if(localStorage.getItem('theme') === 'light') { document.documentElement.classList.add('light-theme'); }
+</script>
+</head><body onkeydown="handleKeys(event)">
+
+<div class="menu">
+  <div class="topbar">
+    <h2 style="color:var(--accent)">Меню</h2>
+    <div>
+      {% if shift %}<span style="color:#30d158">● Открыта</span><form method="post" action="/shift/close" style="display:inline"><button class="btn-cancel" style="width:auto;padding:6px 12px;margin-left:8px">Закрыть</button></form>
+      {% else %}<span style="color:#ff453a">● Закрыта</span><form method="post" action="/shift/open" style="display:inline"><button class="btn-submit" style="width:auto;padding:6px 12px;margin-left:8px">Открыть</button></form>{% endif %}
+      
+      <button id="sound-btn" class="btn-sound" onclick="toggleSound()">🔕 Вкл. звук</button>
+      
+      <button onclick="openAllOrdersModal()" style="background:#0a84ff;color:#fff;border:none;padding:6px 12px;border-radius:8px;font-weight:bold;cursor:pointer;margin-left:12px">📋 Все заказы</button>
+      
+      <button onclick="openOrdersModal()" style="background:var(--accent);color:var(--accent-text);border:none;padding:6px 12px;border-radius:8px;font-weight:bold;cursor:pointer;margin-left:12px">🔥 Активные (F2)</button>
+      
+      {% if role=='admin' %}<a href="/admin" style="color:var(--accent);margin-left:12px;font-weight:bold">⚙️ Админка</a>{% endif %}
+      <a href="/logout" style="color:var(--text-muted);margin-left:15px;text-decoration:none">Выход 🚪</a>
+      <button class="theme-btn" onclick="toggleTheme()" id="theme-btn">🌙</button>
+    </div>
+  </div>
+  
+  {% if not shop_open %}<div class="closed-banner">⚠️ ВНИМАНИЕ! Прием заказов закрыт (график 10:00 - 21:30).</div>{% endif %}
+  
+  <input type="text" id="search" class="search-bar" placeholder="🔍 Поиск (F1)..." oninput="filterItems()">
+  <div class="tabs" id="category-tabs">
+    <div class="tab active" onclick="filterCategory('all', this)">Все</div>
+    {% for cat in categories %}<div class="tab" onclick="filterCategory('{{ cat.category }}', this)">{{ cat.category }}</div>{% endfor %}
+  </div>
+  <div class="grid" id="menu-grid">
+    {% for item in menu %}
+    <div class="item {% if item.stop_list %}stop{% endif %}" data-category="{{ item.category }}" data-name="{{ item.name|lower }}" 
+         onclick="{% if not item.stop_list %}addToCart({{ item.id }}, '{{ item.name }}', {{ item.price }}){% endif %}">
+      <h3>{{ item.name }}</h3><p>{{ item.price }} ₽</p>{% if item.stop_list %}<p style="color:#ff453a;font-size:12px;margin-top:5px">СТОП</p>{% endif %}
+    </div>{% endfor %}
+  </div>
+</div>
+
+<div class="cart">
+  <h2 style="color:var(--accent)">Текущий заказ</h2>
+  <div class="cart-items" id="cart-items"></div>
+  
+  <div class="field"><select id="delivery_type" onchange="toggleAddress()"><option value="доставка">🛵 Доставка</option><option value="самовывоз">🏃 Самовывоз</option></select></div>
+  <div class="field"><select id="zone" style="display:none"><option value="">Зона не выбрана</option>{% for z in zones %}<option value="{{ z.name }} ({{ z.price }}₽)">{{ z.name }} (+{{ z.price }}₽)</option>{% endfor %}</select></div>
+  <div class="field"><input id="address" placeholder="Адрес доставки"></div>
+  <div class="field"><input id="phone" placeholder="Телефон клиента" oninput="checkClient()"></div>
+  <div class="field"><textarea id="comment" rows="1" placeholder="Комментарий"></textarea></div>
+  
+  <div id="bonus-box" class="bonus-box">
+      <div style="color:var(--accent);font-weight:bold;margin-bottom:5px">Доступно бонусов: <span id="client-bonus">0</span> ₽</div>
+      <input type="number" id="use_bonus" placeholder="Списать бонусы" value="0" min="0" oninput="calcTotal()" style="width:100%;box-sizing:border-box;padding:8px;background:var(--bg-input);color:var(--text-main);border:1px solid var(--border);border-radius:5px">
+  </div>
+  
+  <div class="field" style="background:var(--bg-card);padding:10px;border-radius:8px;border:1px solid var(--border); position:relative;">
+    <div style="font-size:13px;color:var(--text-muted);margin-bottom:6px">Предзаказ:</div>
+    <div style="display:flex; gap:6px; flex-wrap:wrap;">
+        <button class="sched-btn" onclick="setSched(30)">+30 мин</button>
+        <button class="sched-btn" onclick="setSched(60)">+1 час</button>
+        <button class="sched-btn" onclick="document.getElementById('scheduled_time').showPicker()">Выбрать...</button>
+        <button class="sched-btn" style="color:#ff453a; border-color:#ff453a;" onclick="clearSched()">Сброс</button>
+    </div>
+    <input type="datetime-local" id="scheduled_time" onchange="updateSchedDisplay()">
+    <div id="sched_display" style="color:var(--accent);font-size:14px;margin-top:8px;display:none;font-weight:bold;"></div>
+  </div>
+  
+  <div class="field" style="background:var(--bg-card);padding:8px;border-radius:8px;border:1px solid var(--border); display:flex; gap:10px; align-items:center">
+    <span style="font-size:14px;color:var(--text-muted)">Скидка:</span>
+    <input type="number" id="discount" value="0" min="0" oninput="calcTotal()" style="margin:0; width:60px">
+    <select id="discount_type" onchange="calcTotal()" style="margin:0; width:70px; padding:5px"><option value="rub">₽</option><option value="percent">%</option></select>
+  </div>
+
+  <div class="field" style="background:var(--bg-card);padding:8px;border-radius:8px;border:1px solid var(--border); display:flex; gap:5px; align-items:center;">
+    <input type="text" id="promo_input" placeholder="Промокод" style="margin:0; flex:1; text-transform:uppercase; padding:6px;">
+    <button onclick="applyPromo()" style="background:var(--accent);color:var(--accent-text);border:none;padding:6px 10px;border-radius:5px;font-weight:bold;cursor:pointer;">OK</button>
+  </div>
+  <div id="promo_msg" style="font-size:12px; margin-bottom:10px; display:none; font-weight:bold;"></div>
+
+  <div class="field">
+    <select id="payment_method" onchange="togglePayment()">
+        <option value="не указан">Оплата: не указана</option><option value="наличные">💵 Наличные</option><option value="карта">💳 Карта</option><option value="перевод">📱 Перевод</option><option value="микс">🤝 Микс</option>
+    </select>
+  </div>
+  
+  <div id="mix-fields" style="display:none;background:var(--bg-card);padding:8px;border-radius:8px;border:1px solid var(--border)">
+      <div class="field"><input type="number" id="pay_cash" placeholder="Сумма наличными" min="0" oninput="calcTotal()"></div>
+      <div class="field"><input type="number" id="pay_card" placeholder="Сумма картой" min="0" readonly style="background:var(--bg-main); color:var(--text-muted); border:none"></div>
+  </div>
+
+  <div id="change-calc" style="display:none; background:var(--bg-card); padding:10px; border-radius:8px; margin-bottom:10px">
+      <div style="display:flex; gap:10px; align-items:center; margin-bottom:5px">
+          <span style="font-size:14px;color:var(--text-muted)">Клиент дал:</span>
+          <input type="number" id="client_gave" placeholder="0" oninput="calcChange()" style="margin:0; width:100px; padding:5px; background:var(--bg-input); color:var(--text-main); border:1px solid var(--border); border-radius:5px">
+      </div>
+      <div id="change-result" class="change-box">Сдача: 0 ₽</div>
+  </div>
+
+  <div class="total" id="total">0 ₽</div>
+  <button class="btn-submit" onclick="submitOrder()">Оформить (Enter)</button>
+  <button class="btn-cancel" onclick="cancelAll()">Очистить (Esc)</button>
+</div>
+
+<!-- МОДАЛЬНОЕ ОКНО АКТИВНЫХ ЗАКАЗОВ -->
+<div class="modal-overlay" id="ordersModal">
+    <div class="modal-content">
+        <div style="display:flex;justify-content:space-between;margin-bottom:15px"><h2 style="margin:0;color:var(--accent)">🔥 Активные заказы</h2><button style="background:none;border:none;color:var(--text-muted);font-size:24px;cursor:pointer" onclick="document.getElementById('ordersModal').style.display='none'">×</button></div>
+        <div id="modal-orders-list" class="orders-grid" style="display:grid; grid-template-columns:repeat(auto-fill,minmax(300px,1fr)); gap:15px;"></div>
+    </div>
+</div>
+
+<!-- ПОЛНОЭКРАННОЕ ОКНО ВСЕХ ЗАКАЗОВ (СТИЛЬ IIKO) -->
+<div class="modal-overlay" id="allOrdersModal" style="z-index:90;">
+    <div class="modal-content" style="width:100vw; height:100vh; max-width:100%; max-height:100%; border-radius:0; border:none; margin:0; padding:20px 40px; display:flex; flex-direction:column;">
+        
+        <!-- ВЕРХНЯЯ ПАНЕЛЬ -->
+        <div style="display:flex; justify-content:space-between; align-items:center; border-bottom: 1px solid var(--border); padding-bottom: 15px; margin-bottom: 20px;">
+            <button onclick="document.getElementById('allOrdersModal').style.display='none'" style="background:var(--bg-card); border:1px solid var(--border); color:var(--text-main); padding:10px 20px; border-radius:8px; font-weight:bold; cursor:pointer; display:flex; align-items:center; gap:8px; font-size:16px;">
+                <span style="font-size:20px;">←</span> Вернуться в Кассу
+            </button>
+            <h2 style="margin:0;color:#0a84ff; font-size:28px; font-weight:bold;">📋 Все заказы</h2>
+            <div style="width: 180px;"></div>
+        </div>
+
+        <!-- ФИЛЬТРЫ -->
+        <div class="filter-panel">
+            <input type="date" id="filter-date" onchange="fetchAllOrders()">
+            <select id="filter-status" onchange="fetchAllOrders()">
+                <option value="">Все статусы</option>
+                <option value="new">Новые</option>
+                <option value="cooking">Готовятся</option>
+                <option value="ready">Готовы</option>
+                <option value="delivering">В пути</option>
+                <option value="done">Выданы</option>
+            </select>
+            <button onclick="fetchAllOrders()">Обновить</button>
+            <span style="color:var(--text-muted); margin-left:auto;" id="filter-info">Заказов за сегодня: 0</span>
+        </div>
+        
+        <!-- СЕТКА ЗАКАЗОВ -->
+        <div id="all-orders-list" class="orders-grid"></div>
+    </div>
+</div>
+
+<!-- МОДАЛЬНОЕ ОКНО РЕДАКТИРОВАНИЯ -->
+<div class="modal-overlay" id="editModal" style="z-index:100;">
+    <div class="modal-content" style="width:500px;">
+        <div style="display:flex;justify-content:space-between;margin-bottom:15px"><h2 id="edit-title" style="margin:0;color:#ffd60a">✏️ Редактирование</h2><button style="background:none;border:none;color:var(--text-muted);font-size:24px;cursor:pointer" onclick="document.getElementById('editModal').style.display='none'">×</button></div>
+        <div id="edit-items-list" style="margin-bottom:15px;"></div>
+        <h3 style="margin-top:0; font-size:16px;">Добавить блюдо:</h3>
+        <select class="add-item-select" id="add-menu-item" onchange="addNewItem()">
+            <option value="">-- Выберите блюдо --</option>
+            {% for m in menu %}
+                <option value="{{ m.id }}" data-name="{{ m.name }}" data-price="{{ m.price }}">{{ m.name }} ({{ m.price }} ₽)</option>
+            {% endfor %}
+        </select>
+        <div style="text-align:right; margin-top:20px; font-size:20px; font-weight:bold;">
+            Итого: <span id="edit-total" style="color:#30d158;">0 ₽</span>
+        </div>
+        <button class="btn-submit" style="background:#30d158; margin-top:10px;" onclick="saveEditedOrder()">💾 Сохранить изменения</button>
+    </div>
+</div>
+
+<script>
+function toggleTheme() {
+    document.body.classList.toggle('light-theme');
+    const isLight = document.body.classList.contains('light-theme');
+    localStorage.setItem('theme', isLight ? 'light' : 'dark');
+    document.getElementById('theme-btn').innerText = isLight ? '🌙' : '☀️';
+}
+document.addEventListener('DOMContentLoaded', () => {
+    if(localStorage.getItem('theme') === 'light') {
+        document.body.classList.add('light-theme');
+        document.getElementById('theme-btn').innerText = '🌙';
+    } else {
+        document.getElementById('theme-btn').innerText = '☀️';
+    }
+    
+    // УСТАНАВЛИВАЕМ ПРАВИЛЬНУЮ ЛОКАЛЬНУЮ ДАТУ (без сдвига UTC)
+    const now = new Date();
+    const localDate = new Date(now.getTime() - now.getTimezoneOffset() * 60000).toISOString().split('T')[0];
+    document.getElementById('filter-date').value = localDate;
+});
+
+function handleKeys(e){
+    if(e.key === 'F1'){ e.preventDefault(); document.getElementById('search').focus(); }
+    if(e.key === 'F2'){ e.preventDefault(); document.getElementById('ordersModal').style.display='flex'; fetchActiveOrders(); }
+    if(e.key === 'Escape'){ 
+        document.getElementById('ordersModal').style.display='none'; 
+        document.getElementById('allOrdersModal').style.display='none'; 
+        document.getElementById('editModal').style.display='none'; 
+        cancelAll(); 
+    }
+    if(e.key === 'Enter' && document.activeElement.tagName !== 'INPUT' && document.activeElement.tagName !== 'TEXTAREA' && document.activeElement.tagName !== 'SELECT'){ e.preventDefault(); submitOrder(); }
+}
+
+let currentCategory = 'all';
+function filterCategory(cat, btn){document.querySelectorAll('.tab').forEach(t=>t.classList.remove('active'));btn.classList.add('active');currentCategory = cat;filterItems();}
+function filterItems(){const q = document.getElementById('search').value.toLowerCase();document.querySelectorAll('.item').forEach(item=>{const matchCategory = (currentCategory === 'all' || item.dataset.category === currentCategory);const matchSearch = item.dataset.name.includes(q);if(matchCategory && matchSearch) item.style.display = 'block';else item.style.display = 'none';});}
+
+let cart=[]; let clientBonus=0; let currentPromo = { code: '', type: '', value: 0 }; let clientLevel = 'bronze';
+
+function addToCart(id, name, price){const ex = cart.find(i => i.id === id); if(ex) ex.qty++; else cart.push({ id, name, price, qty: 1, mods: '', totalPrice: price }); renderCart();}
+function renderCart(){const c=document.getElementById('cart-items');c.innerHTML='';cart.forEach((it,idx)=>{const d=document.createElement('div');d.className='cart-item';d.innerHTML=`<span>${it.name}</span><span><input type="number" min="1" value="${it.qty}" onchange="changeQty(${idx},this.value)" style="width:50px;background:var(--bg-input);color:var(--text-main);border:1px solid var(--border);border-radius:5px;text-align:center;margin-right:5px"> ${it.price * it.qty} ₽ <button onclick="removeItem(${idx})" style="background:none;border:none;color:#ff453a;cursor:pointer;font-size:16px">✖</button></span>`;c.appendChild(d);});calcTotal();}
+function changeQty(idx,v){cart[idx].qty=Math.max(1,parseInt(v)||1);renderCart();}
+function removeItem(idx){cart.splice(idx,1);renderCart();}
+function cancelAll(){cart=[];renderCart();document.getElementById('phone').value='';document.getElementById('address').value='';document.getElementById('discount').value='0';document.getElementById('bonus-box').style.display='none';clearSched(); clearPromo();}
+
+function toggleAddress(){const type = document.getElementById('delivery_type').value;const addr = document.getElementById('address');const zone = document.getElementById('zone');if(type === 'самовывоз'){ addr.value = 'Самовывоз'; addr.disabled = true; addr.style.opacity = '0.5'; zone.style.display='none'; }else { if(addr.value === 'Самовывоз') addr.value = ''; addr.disabled = false; addr.style.opacity = '1'; zone.style.display='block'; } calcTotal();}
+
+function checkClient(){
+    const phone = document.getElementById('phone').value.trim();
+    if(phone.length > 5){
+        fetch('/api/client/' + phone).then(r=>r.json()).then(d=>{
+            if(d.success){
+                clientBonus = d.bonuses; clientLevel = d.level;
+                document.getElementById('client-bonus').innerText = clientBonus;
+                let lvlText = "🥉 Бронза";
+                if(clientLevel === 'silver') lvlText = "🥈 Серебро";
+                if(clientLevel === 'gold') lvlText = "🥇 Золото (Бесплатная доставка)";
+                document.getElementById('bonus-box').style.display = 'block';
+                document.getElementById('bonus-box').innerHTML = `<div style="color:var(--accent);font-weight:bold;margin-bottom:5px">Уровень: <span style="color:var(--text-main)">${lvlText}</span> | Бонусов: <span>${clientBonus}</span> ₽</div>
+                    <input type="number" id="use_bonus" placeholder="Списать бонусы" value="0" min="0" oninput="calcTotal()" style="width:100%;box-sizing:border-box;padding:8px;background:var(--bg-input);color:var(--text-main);border:1px solid var(--border);border-radius:5px">`;
+                fetch('/api/site/client/' + phone).then(r=>r.json()).then(data=>{ if(data.success && !document.getElementById('address').value) document.getElementById('address').value = data.address; });
+            } else { document.getElementById('bonus-box').style.display = 'none'; clientBonus = 0; clientLevel = 'bronze'; }
+            calcTotal();
+        });
+    }
+}
+
+function togglePayment(){const method = document.getElementById('payment_method').value;document.getElementById('mix-fields').style.display = method === 'микс' ? 'block' : 'none';document.getElementById('change-calc').style.display = (method === 'микс' || method === 'наличные') ? 'block' : 'none';calcTotal();}
+
+function setSched(mins){const now = new Date();now.setMinutes(now.getMinutes() + mins);const offset = now.getTimezoneOffset() * 60000;const localISOTime = (new Date(now - offset)).toISOString().slice(0,16);document.getElementById('scheduled_time').value = localISOTime;updateSchedDisplay();}
+function updateSchedDisplay(){const val = document.getElementById('scheduled_time').value;const display = document.getElementById('sched_display');if(val){ display.innerText = '⏰ Ко времени: ' + val.replace('T', ' '); display.style.display = 'block'; } else { display.style.display = 'none'; }}
+function clearSched(){ document.getElementById('scheduled_time').value = ''; updateSchedDisplay(); }
+
+function applyPromo(){const code = document.getElementById('promo_input').value.trim().toUpperCase(); const msg = document.getElementById('promo_msg');if(!code) { clearPromo(); return; }fetch('/api/check_promo', {method:'POST', headers:{'Content-Type':'application/json'}, body:JSON.stringify({code: code})}).then(r=>r.json()).then(d=>{if(d.success){ currentPromo = { code: code, type: d.type, value: d.value }; msg.style.display = 'block'; msg.style.color = '#30d158'; msg.innerText = '✅ Промокод применен!'; calcTotal(); } else { clearPromo(); msg.style.display = 'block'; msg.style.color = '#ff453a'; msg.innerText = '❌ ' + d.error; }});}
+function clearPromo(){ currentPromo = { code: '', type: '', value: 0 }; document.getElementById('promo_input').value = ''; document.getElementById('promo_msg').style.display = 'none'; calcTotal(); }
+
+function calcTotal(){
+    const subTotal = cart.reduce((s,i)=>s+i.price*i.qty, 0);
+    const discount = parseInt(document.getElementById('discount').value) || 0;
+    const type = document.getElementById('discount_type').value;
+    let total = subTotal;
+    if(type === 'percent') total = Math.max(0, subTotal - Math.round(subTotal * discount / 100));
+    else total = Math.max(0, subTotal - discount);
+    
+    let promoDisc = 0;
+    if(currentPromo.code){
+        if(currentPromo.type === 'percent') promoDisc = Math.round(subTotal * currentPromo.value / 100);
+        else promoDisc = currentPromo.value;
+        total = Math.max(0, total - promoDisc);
+    }
+    
+    const zoneSelect = document.getElementById('zone');
+    if(document.getElementById('delivery_type').value === 'доставка' && zoneSelect.value){
+        const match = zoneSelect.value.match(/\((\d+)₽\)/);
+        if(match) { let deliveryPrice = parseInt(match[1]); if(clientLevel === 'gold') deliveryPrice = 0; total += deliveryPrice; }
+    }
+    
+    let useBonus = parseInt(document.getElementById('use_bonus')?.value) || 0;
+    if(useBonus > clientBonus) { useBonus = clientBonus; if(document.getElementById('use_bonus')) document.getElementById('use_bonus').value = clientBonus; }
+    total = Math.max(0, total - useBonus);
+    
+    const cash = parseInt(document.getElementById('pay_cash')?.value) || 0;
+    if(document.getElementById('pay_card')) document.getElementById('pay_card').value = Math.max(0, total - cash);
+    document.getElementById('total').innerText = total + ' ₽';
+    calcChange();
+}
+
+function calcChange(){const total = parseInt(document.getElementById('total').innerText) || 0;const gave = parseInt(document.getElementById('client_gave')?.value) || 0;const change = gave - total;const box = document.getElementById('change-result');if(!box) return;if(change > 0){ box.style.display = 'block'; box.innerText = 'Сдача: ' + change + ' ₽'; box.style.background = '#30d158'; box.style.color = '#000'; }else if(change < 0 && gave > 0){ box.style.display = 'block'; box.innerText = 'Не хватает: ' + Math.abs(change) + ' ₽'; box.style.background = '#ff453a'; box.style.color = '#fff'; }else { box.style.display = 'none'; }}
+
+function submitOrder(){
+  if(cart.length === 0) return alert('Корзина пуста!');
+  const discount = parseInt(document.getElementById('discount').value) || 0;
+  const discount_type = document.getElementById('discount_type').value;
+  const use_bonus = parseInt(document.getElementById('use_bonus')?.value) || 0;
+  const zone = document.getElementById('zone').value;
+  
+  fetch('/api/create_order',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({
+      items:cart, discount:discount, discount_type:discount_type, use_bonus:use_bonus, zone:zone,
+      address:document.getElementById('address').value, phone:document.getElementById('phone').value,
+      comment:document.getElementById('comment').value, scheduled_time:document.getElementById('scheduled_time').value,
+      payment_method:document.getElementById('payment_method').value, delivery_type:document.getElementById('delivery_type').value,
+      promo_code: currentPromo.code
+  })}).then(r => r.json()).then(d => {if(d.success) {cancelAll();alert('Заказ №' + d.order_id + ' оформлен!');} else alert('Ошибка: ' + (d.error || 'Неизвестная'));}).catch(e => alert('Ошибка сети'));
+}
+
+// --- ЗВУК ПРИ НОВОМ ЗАКАЗЕ ---
+let soundEnabled = false;
+let audioCtx = null;
+let lastOrderId = 0;
+
+function toggleSound() {
+    if (!soundEnabled) {
+        if (!audioCtx) audioCtx = new (window.AudioContext || window.webkitAudioContext)();
+        if (audioCtx.state === 'suspended') audioCtx.resume();
+        soundEnabled = true;
+        document.getElementById('sound-btn').innerText = '🔔 Звук вкл';
+        document.getElementById('sound-btn').classList.add('on');
+        playBeep();
+    } else {
+        soundEnabled = false;
+        document.getElementById('sound-btn').innerText = '🔕 Вкл. звук';
+        document.getElementById('sound-btn').classList.remove('on');
+    }
+}
+
+function playBeep() {
+    if (!soundEnabled || !audioCtx) return;
+    try {
+        const osc = audioCtx.createOscillator();
+        const gain = audioCtx.createGain();
+        osc.connect(gain);
+        gain.connect(audioCtx.destination);
+        osc.type = 'square';
+        osc.frequency.setValueAtTime(800, audioCtx.currentTime);
+        osc.frequency.setValueAtTime(1200, audioCtx.currentTime + 0.1);
+        gain.gain.setValueAtTime(1, audioCtx.currentTime);
+        gain.gain.exponentialRampToValueAtTime(0.01, audioCtx.currentTime + 0.4);
+        osc.start();
+        osc.stop(audioCtx.currentTime + 0.4);
+    } catch(e) {}
+}
+
+function checkNewOrdersSound() {
+    fetch('/api/orders?status=all_active').then(r=>r.json()).then(orders => {
+        if (orders.length === 0) return;
+        const maxId = Math.max(...orders.map(o => o.id));
+        if (lastOrderId !== 0 && maxId > lastOrderId) {
+            playBeep();
+        }
+        lastOrderId = maxId;
+    });
+}
+setInterval(checkNewOrdersSound, 5000);
+
+// --- АКТИВНЫЕ ЗАКАЗЫ (F2) ---
+const labels = {new:'🟡 Новый', cooking:'🟠 Готовится', ready:'🟢 Готов', delivering:'🟣 В пути', done:'✅ Выдан', cancelled:'❌ Отменен'};
+function openOrdersModal(){document.getElementById('ordersModal').style.display = 'flex';fetchActiveOrders();}
+function fetchActiveOrders(){
+    fetch('/api/orders?status=all_active').then(r=>r.json()).then(orders=>{
+        const c = document.getElementById('modal-orders-list');c.innerHTML = '';
+        if(orders.length === 0){c.innerHTML = '<div style="color:var(--text-muted);text-align:center;padding:20px">Нет активных заказов</div>';return;}
+        orders.forEach(o=>{
+            const d = document.createElement('div');d.className = 'order-card ' + o.status;
+            const items = o.items.map(i=>`<div class="order-item"><span>${i.name}</span><b>x${i.qty}</b></div>`).join('');
+            let actions = '';
+            if(o.status === 'ready') actions = `<button class="btn-edit" onclick="setStatus(${o.id},'delivering')">В пути</button>`;
+            if(o.status !== 'done') actions += `<button class="btn-done" onclick="setStatus(${o.id},'done')">✅ Выдать</button>`;
+            
+            let changeInfo = (o.payment_method === 'наличные' && o.change_from > 0) ? `<div style="color:#ffd60a;font-weight:bold;margin-top:5px;">💵 Сдача с: ${o.change_from} ₽</div>` : '';
+            
+            d.innerHTML = `<div class="order-header"><span class="order-id">#${o.id}</span><span class="order-status ${o.status}">${labels[o.status]||o.status}</span></div>
+                <div class="order-items">${items}</div>
+                <div class="order-info">${o.phone?`📞 ${o.phone}`:''}</div>
+                ${changeInfo}
+                <div class="order-total">${o.total} ₽</div>
+                <div class="order-actions">${actions}</div>`;
+            c.appendChild(d);
+        });
+    });
+}
+function setStatus(id, status){fetch('/api/set_status/'+id, {method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({status})}).then(()=>{fetchActiveOrders(); if(document.getElementById('allOrdersModal').style.display==='flex') fetchAllOrders();});}
+setInterval(()=>{if(document.getElementById('ordersModal').style.display === 'flex') fetchActiveOrders();}, 3000);
+
+// --- ВСЕ ЗАКАЗЫ (ПОЛНЫЙ ЭКРАН, СТИЛЬ IIKO) ---
+function openAllOrdersModal() {
+    document.getElementById('allOrdersModal').style.display = 'flex';
+    fetchAllOrders();
+}
+
+function fetchAllOrders() {
+    const date = document.getElementById('filter-date').value;
+    const status = document.getElementById('filter-status').value;
+    
+    let url = `/api/all_orders?date=${date}`;
+    if(status) url += `&status=${status}`;
+
+    fetch(url).then(r=>r.json()).then(data=>{
+        const c = document.getElementById('all-orders-list'); c.innerHTML = '';
+        document.getElementById('filter-info').innerText = `Заказов за сегодня: ${data.stats.count}`;
+        
+        if(data.orders.length === 0){ c.innerHTML = '<div style="color:var(--text-muted);text-align:center;padding:20px; grid-column:1/-1;">Нет заказов</div>'; return; }
+        
+        data.orders.forEach(o => {
+            const d = document.createElement('div');
+            d.className = 'order-card ' + o.status;
+            
+            if (o.status !== 'done' && o.status !== 'cancelled') {
+                d.classList.add('active-glow');
+            }
+            if (o.scheduled_time) {
+                d.classList.add('scheduled');
+            }
+            
+            const items = o.items.map(i=>`<div class="order-item"><span>${i.name}</span><b>x${i.qty}</b></div>`).join('');
+            
+            // ДИНАМИЧЕСКИЕ КНОПКИ ДЕЙСТВИЙ
+            let actions = '';
+            if (o.status === 'new') {
+                actions += `<button class="btn-cook" onclick="setStatus(${o.id},'cooking')">🔥 В готовку</button>`;
+                actions += `<button class="btn-edit" onclick="openEditModal(${o.id})">✏️ Ред.</button>`;
+                actions += `<button class="btn-cancel" onclick="setStatus(${o.id},'cancelled')">❌ Отмена</button>`;
+            } else if (o.status === 'cooking') {
+                actions += `<button class="btn-ready" onclick="setStatus(${o.id},'ready')">✅ Готов</button>`;
+                actions += `<button class="btn-edit" onclick="openEditModal(${o.id})">✏️ Ред.</button>`;
+            } else if (o.status === 'ready') {
+                if (o.delivery_type === 'самовывоз') {
+                    actions += `<button class="btn-done" onclick="setStatus(${o.id},'done')">✅ Выдать</button>`;
+                } else {
+                    actions += `<button class="btn-courier" onclick="setStatus(${o.id},'delivering')">🛵 Курьеру</button>`;
+                    actions += `<button class="btn-done" onclick="setStatus(${o.id},'done')">✅ Выдать</button>`;
+                }
+            } else if (o.status === 'delivering') {
+                actions += `<button class="btn-done" onclick="setStatus(${o.id},'done')">✅ Выдать</button>`;
+            } else {
+                 actions += `<button class="btn-print" onclick="window.open('/receipt/${o.id}', '_blank')">🖨️ Чек</button>`;
+            }
+            
+            let schedHtml = o.scheduled_time ? `<div style="color:#0a84ff;font-weight:bold;font-size:12px; margin-top:4px;">⏰ Ко времени: ${o.scheduled_time.replace('T', ' ')}</div>` : '';
+            let typeIcon = o.delivery_type === 'самовывоз' ? '🏃' : '🛵';
+            
+            d.innerHTML = `
+                <div class="order-header">
+                    <span class="order-id">#${o.id}</span>
+                    <span class="order-status ${o.status}">${labels[o.status]||o.status}</span>
+                </div>
+                <div class="order-time">${o.created_at.slice(11,16)} · ${typeIcon} ${o.cashier_name || 'Касса'}</div>
+                <div class="order-items">${items}</div>
+                <div class="order-info">
+                    <div>💰 Сумма: <b>${o.total} ₽</b> | 💳 ${o.payment_method}</div>
+                    ${o.phone ? `<div>📞 ${o.phone}</div>` : ''}
+                </div>
+                ${schedHtml}
+                <div class="order-actions">${actions}</div>
+            `;
+            c.appendChild(d);
+        });
+    });
+}
+setInterval(()=>{if(document.getElementById('allOrdersModal').style.display === 'flex') fetchAllOrders();}, 5000);
+
+// --- РЕДАКТИРОВАНИЕ ---
+let editOrderId = null;
+let editCart = [];
+
+function openEditModal(id) {
+    fetch('/api/all_orders?date=' + document.getElementById('filter-date').value).then(r=>r.json()).then(data=>{
+        const o = data.orders.find(x => x.id === id); if(!o) return;
+        editOrderId = id;
+        editCart = o.items.map(i => ({ id: i.menu_id, name: i.name, price: i.price, qty: i.qty }));
+        
+        document.getElementById('edit-title').innerText = '✏️ Ред. заказа #' + id;
+        document.getElementById('editModal').style.display = 'flex';
+        renderEditCart();
+    });
+}
+
+function renderEditCart() {
+    const container = document.getElementById('edit-items-list');
+    container.innerHTML = '';
+    let total = 0;
+    editCart.forEach((it, idx) => {
+        total += it.price * it.qty;
+        const div = document.createElement('div');
+        div.className = 'edit-item-row';
+        div.innerHTML = `
+            <span>${it.name}</span>
+            <div style="display:flex; align-items:center; gap:10px;">
+                <input type="number" min="1" value="${it.qty}" onchange="changeEditQty(${idx}, this.value)">
+                <span style="width: 60px; text-align:right; font-weight:bold;">${it.price * it.qty} ₽</span>
+                <button onclick="removeEditItem(${idx})" style="background:none; border:none; color:#ff453a; cursor:pointer; font-size:16px;">✖</button>
+            </div>
+        `;
+        container.appendChild(div);
+    });
+    document.getElementById('edit-total').innerText = total + ' ₽';
+}
+
+function changeEditQty(idx, val) {
+    editCart[idx].qty = Math.max(1, parseInt(val) || 1);
+    renderEditCart();
+}
+function removeEditItem(idx) {
+    editCart.splice(idx, 1);
+    renderEditCart();
+}
+function addNewItem() {
+    const sel = document.getElementById('add-menu-item');
+    const id = sel.value;
+    if (!id) return;
+    const name = sel.options[sel.selectedIndex].dataset.name;
+    const price = parseInt(sel.options[sel.selectedIndex].dataset.price);
+    const ex = editCart.find(i => i.id == id);
+    if (ex) ex.qty++;
+    else editCart.push({ id: id, name: name, price: price, qty: 1 });
+    sel.value = '';
+    renderEditCart();
+}
+function saveEditedOrder() {
+    if (editCart.length === 0) return alert('В заказе должна остаться хотя бы одна позиция!');
+    fetch('/api/order/update_items/' + editOrderId, {
+        method: 'POST', headers: {'Content-Type': 'application/json'},
+        body: JSON.stringify({ items: editCart })
+    }).then(r=>r.json()).then(d=>{
+        if(d.success) {
+            alert('Заказ обновлен! Новая сумма: ' + d.new_total + ' ₽');
+            document.getElementById('editModal').style.display = 'none';
+            fetchAllOrders();
+            fetchActiveOrders();
+        } else {
+            alert('Ошибка: ' + (d.error || 'Не удалось сохранить'));
+        }
+    });
+}
+</script></body></html>

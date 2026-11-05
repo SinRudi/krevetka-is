@@ -1,0 +1,200 @@
+<!DOCTYPE html><html lang="ru"><head><meta charset="UTF-8">
+<title>Управление ERP — КРЕВЕТКА IS</title>
+<style>
+body { margin:0; padding:20px 28px; }
+.stats { display:grid; grid-template-columns:repeat(auto-fit, minmax(200px, 1fr)); gap:14px; margin-bottom:20px; }
+.stat-card { padding:18px; }
+.stat-card h3 { margin:0 0 8px; color:#a1a1aa; font-size:11px; text-transform:uppercase; letter-spacing:0.05em; }
+.stat-card p { margin:0; font-size:26px; font-weight:800; color:#fafafa; }
+.two-cols { display:grid; grid-template-columns:1.3fr 1fr; gap:20px; margin-bottom:20px; }
+@media(max-width:950px){ .two-cols { grid-template-columns:1fr; } }
+.chart { display:flex; align-items:flex-end; height:120px; gap:12px; margin-top:16px; padding-bottom:10px; border-bottom:1px solid var(--border); }
+.bar-wrap { flex:1; display:flex; flex-direction:column; align-items:center; justify-content:flex-end; height:100%; }
+.bar { width:100%; background:#ff6900; border-radius:4px 4px 0 0; min-height:4px; }
+.bar-label { font-size:11px; color:#a1a1aa; margin-top:6px; }
+.bar-value { font-size:11px; color:#fafafa; font-weight:700; margin-bottom:4px; }
+img.thumb { width:52px; height:52px; object-fit:cover; border-radius:6px; border:1px solid #27272a; }
+</style></head><body>
+
+<div class="page-nav-header">
+    <div class="page-nav-left">
+        <a href="/" class="btn-back-nav">← Назад в Кассу</a>
+        <h1 style="margin:0; font-size:20px; font-weight:800; color:#fafafa; text-transform:uppercase;">Центр управления и Штат сотрудников</h1>
+    </div>
+    <div class="page-nav-right">
+        <form method="post" action="/admin/shop_status" style="display:flex; gap:6px; align-items:center;">
+            <span style="font-size:12px; color:#a1a1aa; margin-right:4px;">Режим точки:</span>
+            <button type="submit" name="status" value="auto" class="quick-chip" style="{% if shop_status == 'auto' %}border-color:#ff6900;color:#ff6900;{% endif %}">Авто (10:00–21:30)</button>
+            <button type="submit" name="status" value="open" class="quick-chip" style="{% if shop_status == 'open' %}border-color:#16a34a;color:#16a34a;{% endif %}">Открыто 24/7</button>
+            <button type="submit" name="status" value="closed" class="quick-chip" style="{% if shop_status == 'closed' %}border-color:#dc2626;color:#dc2626;{% endif %}">Тех. перерыв</button>
+        </form>
+        <a href="/accounting" class="quick-chip" style="border-color:#0ea5e9; color:#38bdf8;">Бухгалтерия (Белая / Упр.)</a>
+        <a href="/admin/backup_db" class="quick-chip">Скачать БД (.db)</a>
+    </div>
+</div>
+
+<div class="stats">
+    <div class="stat-card"><h3>Выручка (Всего)</h3><p style="color:#16a34a;">{{ stats.rev }} ₽</p></div>
+    <div class="stat-card"><h3>Выполнено заказов</h3><p>{{ stats.cnt }}</p></div>
+    <div class="stat-card"><h3>Средний чек</h3><p>{{ avg_check|round|int }} ₽</p></div>
+    <div class="stat-card"><h3>Индекс качества</h3><p style="color:#ff6900;">{{ avg_rating }} / 5.0</p></div>
+</div>
+
+<!-- ШТАТ СОТРУДНИКОВ И ПЕРСОНАЛЬНЫЕ ПИН-КОДЫ (4–6 ЦИФР) -->
+<div class="card-panel" style="padding:18px; margin-bottom:20px; border-color:#3f3f46!important;">
+    <div style="display:flex; justify-content:space-between; align-items:center; margin-bottom:14px; flex-wrap:wrap; gap:8px;">
+        <div>
+            <h2 style="margin:0; font-size:16px; text-transform:uppercase; color:#ff6900;">Штат сотрудников, права доступа и ПИН-коды (4–6 цифр)</h2>
+            <p style="margin:4px 0 0; font-size:12px; color:#a1a1aa;">У каждого работника свой личный ПИН-код от 4 до 6 цифр. Вы можете редактировать имя, ПИН, должность и персональные разрешения любого сотрудника.</p>
+        </div>
+        {% if request.args.get('pin_msg') %}
+        <span class="roll-8-badge" style="color:#4ade80; border-color:#16a34a; font-size:12px; padding:6px 12px;">{{ request.args.get('pin_msg') }}</span>
+        {% endif %}
+        {% if request.args.get('pin_err') %}
+        <span class="roll-8-badge" style="color:#f87171; border-color:#dc2626; font-size:12px; padding:6px 12px;">{{ request.args.get('pin_err') }}</span>
+        {% endif %}
+    </div>
+
+    <form method="post" action="/admin/users/add" style="display:flex; flex-wrap:wrap; gap:8px; align-items:center; margin-bottom:16px; padding:12px; background:#09090b; border:1px solid #27272a; border-radius:6px;">
+        <input name="username" placeholder="Имя сотрудника (напр. Илья Повар)" required style="flex:1; min-width:170px;">
+        <input name="pin_code" type="text" inputmode="numeric" minlength="4" maxlength="6" placeholder="Новый ПИН (4–6 цифр)" required style="width:165px; font-family:monospace; font-weight:700; letter-spacing:2px;">
+        <select name="role" style="width:150px;">
+            <option value="cashier">Кассир</option>
+            <option value="kitchen">Повар KDS</option>
+            <option value="courier">Курьер</option>
+            <option value="admin">Администратор</option>
+        </select>
+        <label style="display:inline-flex; align-items:center; gap:5px; font-size:12px; color:#d4d4d8;"><input type="checkbox" name="can_edit_menu" value="1"> Меню и Склад</label>
+        <label style="display:inline-flex; align-items:center; gap:5px; font-size:12px; color:#d4d4d8;"><input type="checkbox" name="can_give_discount" value="1" checked> Скидки</label>
+        <label style="display:inline-flex; align-items:center; gap:5px; font-size:12px; color:#d4d4d8;"><input type="checkbox" name="can_view_finance" value="1"> Бухгалтерия</label>
+        <button type="submit" class="btn" style="padding:8px 16px; cursor:pointer;">+ Добавить сотрудника</button>
+    </form>
+
+    <table>
+        <tr>
+            <th>ID</th>
+            <th>Имя сотрудника</th>
+            <th>Личный ПИН (4–6 цифр)</th>
+            <th>Должность / Роль</th>
+            <th>Индивидуальные права</th>
+            <th>Действия</th>
+        </tr>
+        {% for u in users %}
+        <tr>
+            <form method="post" action="/admin/users/update/{{ u.id }}">
+                <td style="color:#71717a;">#{{ u.id }}</td>
+                <td><input type="text" name="username" value="{{ u.username }}" required style="width:100%; min-width:140px;"></td>
+                <td>
+                    <input type="text" name="pin_code" value="{{ u.pin_code or '' }}" inputmode="numeric" minlength="4" maxlength="6" required placeholder="4–6 цифр" style="width:125px; font-family:monospace; font-size:15px; font-weight:800; color:#ff6900; letter-spacing:3px; text-align:center;">
+                </td>
+                <td>
+                    <select name="role" style="width:145px;">
+                        <option value="admin" {% if u.role == 'admin' %}selected{% endif %}>Администратор</option>
+                        <option value="cashier" {% if u.role == 'cashier' %}selected{% endif %}>Кассир</option>
+                        <option value="kitchen" {% if u.role == 'kitchen' %}selected{% endif %}>Повар KDS</option>
+                        <option value="courier" {% if u.role == 'courier' %}selected{% endif %}>Курьер</option>
+                    </select>
+                </td>
+                <td>
+                    <div style="display:flex; gap:10px; flex-wrap:wrap; font-size:12px;">
+                        <label style="display:inline-flex; align-items:center; gap:4px;"><input type="checkbox" name="can_edit_menu" value="1" {% if u.can_edit_menu or u.role == 'admin' %}checked{% endif %}> Меню/Склад</label>
+                        <label style="display:inline-flex; align-items:center; gap:4px;"><input type="checkbox" name="can_give_discount" value="1" {% if u.can_give_discount or u.role == 'admin' %}checked{% endif %}> Скидки</label>
+                        <label style="display:inline-flex; align-items:center; gap:4px;"><input type="checkbox" name="can_view_finance" value="1" {% if u.can_view_finance or u.role == 'admin' %}checked{% endif %}> Бухгалтерия</label>
+                    </div>
+                </td>
+                <td style="white-space:nowrap;">
+                    <button type="submit" class="btn-ready" style="padding:6px 12px; border-radius:6px; font-size:12px; font-weight:700; cursor:pointer;">Сохранить</button>
+                    {% if u.id != session.get('user_id') %}
+                    <button type="submit" formaction="/admin/users/delete/{{ u.id }}" class="quick-chip" style="color:#dc2626; margin-left:4px;" onclick="return confirm('Удалить сотрудника {{ u.username }}?');">Удалить</button>
+                    {% endif %}
+                </td>
+            </form>
+        </tr>
+        {% endfor %}
+    </table>
+</div>
+
+<div class="two-cols">
+    <div class="card-panel" style="padding:18px;">
+        <h3 style="margin:0; font-size:13px; text-transform:uppercase; color:#a1a1aa;">Динамика выручки за 7 дней</h3>
+        <div class="chart">
+            {% for d in chart_data %}
+            <div class="bar-wrap">
+                <div class="bar-value">{{ d.rev }}</div>
+                <div class="bar" style="height: {{ (d.rev / 10000 * 100) if d.rev > 0 else 3 }}%"></div>
+                <div class="bar-label">{{ d.date }}</div>
+            </div>
+            {% endfor %}
+        </div>
+    </div>
+    <div class="card-panel" style="padding:18px;">
+        <h3 style="margin:0 0 10px 0; font-size:13px; text-transform:uppercase; color:#a1a1aa;">Промокоды и маркетинг</h3>
+        <form method="post" action="/admin/promo/add" style="display:flex; gap:6px; margin-bottom:12px;">
+            <input name="code" placeholder="КОД (SUSHI10)" required style="text-transform:uppercase; flex:1;">
+            <select name="type" style="width:90px;"><option value="percent">%</option><option value="rub">₽</option></select>
+            <input name="value" type="number" placeholder="Номинал" required style="width:95px;">
+            <button type="submit" class="btn" style="padding:8px 14px;">+</button>
+        </form>
+        <table>
+            <tr><th>Промокод</th><th>Скидка</th><th></th></tr>
+            {% for p in promos %}
+            <tr>
+                <td><b>{{ p.code }}</b></td>
+                <td>{% if p.discount_type == 'percent' %}{{ p.discount_value }}%{% else %}{{ p.discount_value }} ₽{% endif %}</td>
+                <td style="text-align:right;"><form method="post" action="/admin/promo/delete/{{ p.id }}" style="display:inline;"><button type="submit" class="quick-chip" style="color:#dc2626;">Удалить</button></form></td>
+            </tr>
+            {% endfor %}
+        </table>
+    </div>
+</div>
+
+<div class="card-panel" style="padding:18px;">
+    <div style="display:flex; justify-content:space-between; align-items:center; margin-bottom:14px;">
+        <h2 style="margin:0; font-size:16px; text-transform:uppercase;">Матрица меню и техкарты</h2>
+        <span class="roll-8-badge">Стандарт выхода роллов: 8 шт.</span>
+    </div>
+
+    <form method="post" action="/admin/menu/add" enctype="multipart/form-data" style="display:flex; flex-wrap:wrap; gap:8px; margin-bottom:16px; padding:12px; background:#09090b; border:1px solid #27272a; border-radius:6px;">
+        <input name="name" placeholder="Название позиции" required style="width:180px;">
+        <input name="price" type="number" placeholder="Цена (₽)" required style="width:95px;">
+        <input name="category" placeholder="Категория (Роллы)" required style="width:140px;">
+        <input name="sort_weight" type="number" placeholder="Приоритет" style="width:95px;">
+        <input name="composition" placeholder="Состав (для витрины)" style="flex:1; min-width:180px;">
+        <input type="file" name="image" accept="image/*" style="width:190px; padding:5px;">
+        <button type="submit" class="btn" style="padding:8px 16px; cursor:pointer;">+ Добавить позицию</button>
+    </form>
+
+    <table>
+        <tr><th>Фото</th><th>Наименование и состав</th><th>Категория</th><th>Цена продажи</th><th>Статус</th><th>Управление</th></tr>
+        {% for m in menu %}
+        <tr>
+            <td>{% if m.image %}<img src="/static/uploads/{{ m.image }}" class="thumb">{% else %}<div style="width:52px;height:52px;background:#18181b;border-radius:6px;display:flex;align-items:center;justify-content:center;font-size:10px;color:#71717a;">Нет</div>{% endif %}</td>
+            <td>
+                <div style="font-weight:700; color:#fafafa;">{{ m.name }}</div>
+                <div style="color:#a1a1aa; font-size:12px; margin-top:2px;">{{ m.composition or 'Состав не указан' }}</div>
+            </td>
+            <td><span class="roll-8-badge">{{ m.category }}</span></td>
+            <td style="font-weight:800; font-size:15px; color:#ff6900;">{{ m.price }} ₽</td>
+            <td>
+                {% if m.stop_list %}
+                <span class="roll-8-badge" style="color:#dc2626; border-color:#dc2626;">В СТОП-ЛИСТЕ</span>
+                {% else %}
+                <span class="roll-8-badge" style="color:#16a34a; border-color:#16a34a;">АКТИВЕН</span>
+                {% endif %}
+            </td>
+            <td>
+                <div style="display:flex; gap:6px;">
+                    <a href="/admin/menu/edit/{{ m.id }}" class="quick-chip">Техкарта / Ред.</a>
+                    <form method="post" action="/admin/menu/stop/{{ m.id }}" style="display:inline;">
+                        <button type="submit" class="quick-chip">{% if m.stop_list %}Снять стоп{% else %}В стоп-лист{% endif %}</button>
+                    </form>
+                    <form method="post" action="/admin/menu/delete/{{ m.id }}" style="display:inline;" onsubmit="return confirm('Удалить позицию из меню?');">
+                        <button type="submit" class="quick-chip" style="color:#dc2626;">Удалить</button>
+                    </form>
+                </div>
+            </td>
+        </tr>
+        {% endfor %}
+    </table>
+</div>
+</body></html>

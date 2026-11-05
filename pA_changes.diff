@@ -1,0 +1,432 @@
+--- backups/pA_20261101_142232/app.py	2026-11-01 13:36:27.339993923 +0300
++++ app.py	2026-11-01 14:26:22.239956876 +0300
+@@ -2,7 +2,7 @@
+ from datetime import datetime, timedelta
+ from functools import wraps
+ from werkzeug.security import generate_password_hash, check_password_hash
+-import sqlite3, os, re, uuid, io, openpyxl, time, secrets, hashlib, html, tempfile, urllib.request, urllib.parse, threading
++import sqlite3, os, re, uuid, io, openpyxl, time, secrets, hashlib, hmac, html, tempfile, urllib.request, urllib.parse, threading
+ 
+ app = Flask(__name__)
+ BASE_DIR = os.path.dirname(os.path.abspath(__file__))
+@@ -134,6 +134,72 @@
+     except Exception:
+         return True
+ 
++def _ensure_column(db, table, column, decl):
++    cols = {r[1] for r in db.execute(f"PRAGMA table_info({table})")}
++    if column not in cols:
++        db.execute(f"ALTER TABLE {table} ADD COLUMN {column} {decl}")
++
++
++def apply_migrations(db):
++    """Идемпотентные миграции: лечат и старые БД, и свежую установку."""
++    now = datetime.now().strftime("%Y-%m-%d %H:%M:%S")
++    db.execute("CREATE TABLE IF NOT EXISTS schema_migrations (version INTEGER PRIMARY KEY, applied_at TEXT NOT NULL)")
++    columns = (
++        ('print_jobs', 'job_type', "TEXT NOT NULL DEFAULT 'receipt'"),
++        ('print_jobs', 'payload', "TEXT NOT NULL DEFAULT '{}'"),
++        ('users', 'is_active', 'INTEGER NOT NULL DEFAULT 1'),
++        ('users', 'password_version', 'INTEGER NOT NULL DEFAULT 1'),
++        ('users', 'password', "TEXT DEFAULT ''"),
++        ('users', 'must_change_password', 'INTEGER NOT NULL DEFAULT 0'),
++        ('shifts', 'total_cash', 'INTEGER DEFAULT 0'),
++        ('shifts', 'total_card', 'INTEGER DEFAULT 0'),
++        ('shifts', 'cash_ops', 'INTEGER DEFAULT 0'),
++        ('shifts', 'opening_cash', 'INTEGER DEFAULT 0'),
++        ('shifts', 'cash_in', 'INTEGER DEFAULT 0'),
++        ('shifts', 'cash_out', 'INTEGER DEFAULT 0'),
++        ('shifts', 'expected_cash', 'INTEGER DEFAULT 0'),
++        ('shifts', 'actual_cash', 'INTEGER DEFAULT 0'),
++        ('shifts', 'discrepancy', 'INTEGER DEFAULT 0'),
++        ('orders', 'cashier_id', 'INTEGER DEFAULT 0'),
++        ('orders', 'source', "TEXT DEFAULT 'Касса'"),
++        ('orders', 'payment_cash', 'INTEGER DEFAULT 0'),
++        ('orders', 'payment_card', 'INTEGER DEFAULT 0'),
++        ('orders', 'change_from', 'INTEGER DEFAULT 0'),
++        ('orders', 'delivery_price', 'INTEGER DEFAULT 0'),
++        ('orders', 'used_bonus', 'INTEGER DEFAULT 0'),
++        ('orders', 'client_credited', 'INTEGER DEFAULT 0'),
++        ('orders', 'earned_bonus', 'INTEGER DEFAULT 0'),
++        ('orders', 'bonus_refunded', 'INTEGER DEFAULT 0'),
++        ('orders', 'public_token', "TEXT DEFAULT ''"),
++        ('orders', 'idempotency_key', "TEXT DEFAULT ''"),
++        ('orders', 'payment_status', "TEXT DEFAULT 'unpaid'"),
++        ('orders', 'paid_at', 'TEXT'),
++        ('orders', 'loyalty_applied', 'INTEGER DEFAULT 0'),
++        ('orders', 'stock_deducted', 'INTEGER DEFAULT 0'),
++        ('orders', 'bonus_awarded', 'INTEGER DEFAULT 0'),
++        ('payments', 'cashier_id', 'INTEGER DEFAULT 0'),
++        ('payments', 'note', "TEXT DEFAULT ''"),
++    )
++    for table, column, decl in columns:
++        _ensure_column(db, table, column, decl)
++
++    db.execute("INSERT OR IGNORE INTO schema_migrations (version, applied_at) VALUES (3, ?)", (now,))
++    db.execute("PRAGMA user_version = 3")
++
++    # Устаревшая колонка users.password хранила копию хеша — очищаем.
++    db.execute("UPDATE users SET password='' WHERE password IS NOT NULL AND password != ''")
++
++    # Если действует пароль, равный логину, требуем смену при следующем входе.
++    for uid, username, pwhash, must_change in db.execute(
++            "SELECT id, username, password_hash, must_change_password FROM users").fetchall():
++        try:
++            is_default = bool(pwhash) and check_password_hash(pwhash, username)
++        except Exception:
++            is_default = False
++        if is_default and not must_change:
++            db.execute("UPDATE users SET must_change_password=1, password_version=password_version+1 WHERE id=?", (uid,))
++
++
+ def init_db():
+     db = sqlite3.connect(DB_PATH)
+     db.execute("PRAGMA journal_mode = WAL")
+@@ -191,6 +257,12 @@
+     CREATE TABLE IF NOT EXISTS recipes (menu_id INTEGER, ingredient_id INTEGER, amount REAL NOT NULL, PRIMARY KEY (menu_id, ingredient_id), FOREIGN KEY(menu_id) REFERENCES menu(id) ON DELETE CASCADE, FOREIGN KEY(ingredient_id) REFERENCES ingredients(id) ON DELETE CASCADE);
+     CREATE TABLE IF NOT EXISTS prep_recipes (prep_id INTEGER, raw_id INTEGER, amount REAL NOT NULL, PRIMARY KEY (prep_id, raw_id), FOREIGN KEY(prep_id) REFERENCES ingredients(id) ON DELETE CASCADE, FOREIGN KEY(raw_id) REFERENCES ingredients(id) ON DELETE CASCADE);
+     CREATE TABLE IF NOT EXISTS stock_logs (id INTEGER PRIMARY KEY AUTOINCREMENT, created_at TEXT NOT NULL, ingredient_id INTEGER, ing_name TEXT, change_amount REAL, op_type TEXT, reason TEXT, cost_impact REAL DEFAULT 0, username TEXT);
++    CREATE TABLE IF NOT EXISTS refunds (
++        id INTEGER PRIMARY KEY AUTOINCREMENT, order_id INTEGER NOT NULL, shift_id INTEGER,
++        method TEXT NOT NULL, amount INTEGER NOT NULL CHECK(amount >= 0), reason TEXT DEFAULT '',
++        created_at TEXT NOT NULL, user_id INTEGER,
++        FOREIGN KEY(order_id) REFERENCES orders(id) ON DELETE CASCADE
++    );
+     CREATE UNIQUE INDEX IF NOT EXISTS idx_ing_unique_name ON ingredients(lower(trim(name)));
+     """)
+     if db.execute("SELECT COUNT(*) FROM settings").fetchone()[0] == 0:
+@@ -200,15 +272,51 @@
+         pwd = secrets.token_urlsafe(6)
+         db.execute("INSERT INTO users (username, password_hash, role, created_at) VALUES (?,?,?,?)", ("admin", generate_password_hash(pwd), "admin", now))
+         print(f"🔐 Создан администратор admin с паролем: {pwd}")
++    apply_migrations(db)
+     db.commit()
+     db.close()
+ 
++def get_csrf_token():
++    token = session.get('_csrf_token')
++    if not token:
++        token = secrets.token_urlsafe(32)
++        session['_csrf_token'] = token
++    return token
++
++
++@app.before_request
++def csrf_protect():
++    if request.method in ('POST', 'PUT', 'PATCH', 'DELETE'):
++        expected = session.get('_csrf_token', '')
++        supplied = request.headers.get('X-CSRF-Token') or request.form.get('csrf_token') or ''
++        if not expected or not supplied or not hmac.compare_digest(str(supplied), str(expected)):
++            msg = 'CSRF-токен отсутствует или неверен. Обновите страницу и повторите.'
++            if request.path.startswith('/api/'):
++                return jsonify({"error": msg}), 400
++            abort(400, description=msg)
++
++
++@app.before_request
++def validate_session():
++    if request.endpoint == 'static' or 'user_id' not in session:
++        return
++    user = get_db().execute("SELECT password_hash, is_active FROM users WHERE id=?", (session['user_id'],)).fetchone()
++    expected = (user['password_hash'] or '')[:16] if user else ''
++    if not user or not user['is_active'] or session.get('pwd_sig') != expected:
++        session.clear()
++        return redirect(url_for('login'))
++
++
+ def login_required(*roles):
+     def decorator(f):
+         @wraps(f)
+         def wrapper(*args, **kwargs):
+             if 'user_id' not in session: return redirect(url_for('login'))
+             if roles and session.get('role') not in roles: return "Доступ запрещён", 403
++            if session.get('must_change_password') and request.endpoint not in ('change_password', 'logout', 'static'):
++                if request.path.startswith('/api/'):
++                    return jsonify({"error": "Требуется смена пароля", "redirect": "/change_password"}), 403
++                return redirect(url_for('change_password'))
+             return f(*args, **kwargs)
+         return wrapper
+     return decorator
+@@ -295,11 +403,11 @@
+ def record_order_payments(db, order_id, shift_id, payment_method, total, raw_cash=0, cashier_id=0):
+     db.execute("DELETE FROM payments WHERE order_id=?", (order_id,))
+     pm = (payment_method or 'не указан').strip().lower()
+-    if pm == 'наличные':
++    if pm in ('наличные', 'cash'):
+         pay_cash, pay_card = total, 0
+-    elif pm in ('карта', 'перевод', 'не указан'):
++    elif pm in ('карта', 'card', 'перевод', 'не указан'):
+         pay_cash, pay_card = 0, total
+-    elif pm == 'микс':
++    elif pm in ('микс', 'сплит', 'split'):
+         pay_cash = min(total, max(0, int(raw_cash or 0)))
+         pay_card = max(0, total - pay_cash)
+     else:
+@@ -308,10 +416,11 @@
+     now_str = datetime.now().strftime("%Y-%m-%d %H:%M:%S")
+     if pay_cash > 0:
+         db.execute("INSERT INTO payments (order_id, shift_id, method, amount, status, created_at, cashier_id) VALUES (?,?,?,?,?,?,?)",
+-                   (order_id, shift_id, 'cash', pay_cash, 'paid', now_str, cashier_id))
++                   (order_id, shift_id, 'наличные', pay_cash, 'paid', now_str, cashier_id))
+     if pay_card > 0:
+         db.execute("INSERT INTO payments (order_id, shift_id, method, amount, status, created_at, cashier_id) VALUES (?,?,?,?,?,?,?)",
+-                   (order_id, shift_id, 'card', pay_card, 'paid', now_str, cashier_id))
++                   (order_id, shift_id, 'карта', pay_card, 'paid', now_str, cashier_id))
++    db.execute("UPDATE orders SET payment_status='paid', paid_at=COALESCE(paid_at, ?) WHERE id=?", (now_str, order_id))
+     return pay_cash, pay_card
+ 
+ def settle_client_loyalty(db, order, direction=1):
+@@ -353,8 +462,13 @@
+ 
+ def enqueue_print_job(db, order_id, job_type='receipt'):
+     now_str = datetime.now().strftime("%Y-%m-%d %H:%M:%S")
+-    db.execute("INSERT INTO print_jobs (order_id, job_type, station, status, attempts, created_at) VALUES (?,?,?,?,?,?)",
+-               (order_id, job_type, 'all', 'pending', 0, now_str))
++    cols = {r[1] for r in db.execute("PRAGMA table_info(print_jobs)")}
++    if 'job_type' in cols:
++        db.execute("INSERT INTO print_jobs (order_id, job_type, station, payload, status, attempts, created_at) VALUES (?,?,?,?,?,?,?)",
++                   (order_id, job_type, 'all', '{}', 'pending', 0, now_str))
++    else:
++        db.execute("INSERT INTO print_jobs (order_id, station, payload, status, attempts, created_at) VALUES (?,?,?,?,?,?)",
++                   (order_id, 'all', '{}', 'pending', 0, now_str))
+ 
+ def parse_zone_price(zone_str, delivery_type, client_level='bronze'):
+     if delivery_type != 'доставка' or not zone_str or client_level == 'gold': return 0
+@@ -376,6 +490,10 @@
+             session['username'] = user['username']
+             session['role'] = user['role']
+             session['pwd_sig'] = (user['password_hash'] if 'password_hash' in user.keys() and user['password_hash'] else user['password'])[:16]
++            session['must_change_password'] = bool(user['must_change_password'])
++            if session['must_change_password']:
++                flash('Пароль по умолчанию больше не действует — задайте новый.')
++                return redirect(url_for('change_password'))
+             return redirect(url_for('index'))
+         flash('Неверный логин или пароль')
+     return render_template('login.html')
+@@ -383,6 +501,38 @@
+ @app.route('/logout')
+ def logout(): session.clear(); return redirect(url_for('login'))
+ 
++
++@app.route('/change_password', methods=['GET', 'POST'])
++@login_required()
++def change_password():
++    if request.method == 'POST':
++        old = request.form.get('old_password', '')
++        new = request.form.get('new_password', '')
++        confirm = request.form.get('confirm_password', '')
++        db = get_db()
++        user = db.execute("SELECT * FROM users WHERE id=?", (session['user_id'],)).fetchone()
++        if not user or not check_password_hash(user['password_hash'], old):
++            flash('Текущий пароль неверен')
++            return render_template('change_password.html'), 400
++        if len(new) < 10:
++            flash('Новый пароль должен быть не короче 10 символов')
++            return render_template('change_password.html'), 400
++        if new != confirm:
++            flash('Пароли не совпадают')
++            return render_template('change_password.html'), 400
++        if new == old or new.strip().lower() == (user['username'] or '').lower():
++            flash('Новый пароль не должен совпадать с текущим паролем или логином')
++            return render_template('change_password.html'), 400
++        new_hash = generate_password_hash(new)
++        db.execute("UPDATE users SET password_hash=?, password='', password_version=password_version+1, must_change_password=0 WHERE id=?",
++                   (new_hash, user['id']))
++        db.commit()
++        session['pwd_sig'] = new_hash[:16]
++        session['must_change_password'] = False
++        flash('Пароль обновлён')
++        return redirect(url_for('index'))
++    return render_template('change_password.html')
++
+ def get_open_shift():
+     return get_db().execute("SELECT * FROM shifts WHERE status='open' ORDER BY id DESC LIMIT 1").fetchone()
+ 
+@@ -421,13 +571,27 @@
+ 
+     cnt = db.execute("SELECT COUNT(*) FROM orders WHERE shift_id=? AND status!='cancelled'", (shift['id'],)).fetchone()[0]
+     rev = db.execute("SELECT COALESCE(SUM(amount),0) FROM payments WHERE shift_id=? AND status='paid'", (shift['id'],)).fetchone()[0]
+-    cash = db.execute("SELECT COALESCE(SUM(amount),0) FROM payments WHERE shift_id=? AND status='paid' AND method='cash'", (shift['id'],)).fetchone()[0]
+-    card = db.execute("SELECT COALESCE(SUM(amount),0) FROM payments WHERE shift_id=? AND status='paid' AND method='card'", (shift['id'],)).fetchone()[0]
+-
+-    db.execute("UPDATE shifts SET closed_at=?, closed_by=?, status='closed', total_orders=?, total_revenue=?, total_cash=?, total_card=? WHERE id=?",
+-               (datetime.now().strftime("%Y-%m-%d %H:%M:%S"), session['user_id'], cnt, rev, cash, card, shift['id']))
++    sales_cash = db.execute("SELECT COALESCE(SUM(amount),0) FROM payments WHERE shift_id=? AND status='paid' AND method IN ('наличные','cash')", (shift['id'],)).fetchone()[0]
++    card = db.execute("SELECT COALESCE(SUM(amount),0) FROM payments WHERE shift_id=? AND status='paid' AND method IN ('карта','card')", (shift['id'],)).fetchone()[0]
++    float_in = db.execute("SELECT COALESCE(SUM(amount),0) FROM cash_operations WHERE shift_id=? AND op_type='float_in'", (shift['id'],)).fetchone()[0]
++    collection = db.execute("SELECT COALESCE(SUM(amount),0) FROM cash_operations WHERE shift_id=? AND op_type='collection'", (shift['id'],)).fetchone()[0]
++    expected_cash = sales_cash + float_in - collection
++    raw_actual = (request.form.get('actual_cash') or '').strip()
++    try:
++        actual_cash = int(raw_actual) if raw_actual else expected_cash
++    except ValueError:
++        actual_cash = expected_cash
++    discrepancy = actual_cash - expected_cash
++    cash_ops = float_in - collection
++
++    db.execute("UPDATE shifts SET closed_at=?, closed_by=?, status='closed', total_orders=?, total_revenue=?, "
++               "total_cash=?, total_card=?, cash_ops=?, opening_cash=?, cash_in=?, cash_out=?, "
++               "expected_cash=?, actual_cash=?, discrepancy=? WHERE id=?",
++               (datetime.now().strftime("%Y-%m-%d %H:%M:%S"), session['user_id'], cnt, rev,
++                sales_cash, card, cash_ops, float_in, float_in, collection,
++                expected_cash, actual_cash, discrepancy, shift['id']))
+     db.commit()
+-    send_tg_async(f"📊 <b>СМЕНА #{shift['id']} ЗАКРЫТА (Z-Отчет)</b>\n📦 Заказов: {cnt}\n💰 Выручка: <b>{rev} ₽</b>\n💵 Наличные: {cash} ₽\n💳 Безнал: {card} ₽")
++    send_tg_async(f"📊 <b>СМЕНА #{shift['id']} ЗАКРЫТА (Z-Отчет)</b>\n📦 Заказов: {cnt}\n💰 Выручка: <b>{rev} ₽</b>\n💵 Наличные: {sales_cash} ₽\n💳 Безнал: {card} ₽\n🧾 Ожидаемо в кассе: {expected_cash} ₽\n✅ Факт: {actual_cash} ₽\n📉 Расхождение: {discrepancy} ₽")
+     return redirect(url_for('reports'))
+ 
+ @app.route('/api/cash_op', methods=['POST'])
+@@ -454,7 +618,7 @@
+     shift = get_open_shift()
+     if not shift: return jsonify({"open": False, "drawer_cash": 0})
+     db = get_db()
+-    sales_cash = db.execute("SELECT COALESCE(SUM(amount),0) FROM payments WHERE shift_id=? AND status='paid' AND method='cash'", (shift['id'],)).fetchone()[0]
++    sales_cash = db.execute("SELECT COALESCE(SUM(amount),0) FROM payments WHERE shift_id=? AND status='paid' AND method IN ('наличные','cash')", (shift['id'],)).fetchone()[0]
+     float_in = db.execute("SELECT COALESCE(SUM(amount),0) FROM cash_operations WHERE shift_id=? AND op_type='float_in'", (shift['id'],)).fetchone()[0]
+     collection = db.execute("SELECT COALESCE(SUM(amount),0) FROM cash_operations WHERE shift_id=? AND op_type='collection'", (shift['id'],)).fetchone()[0]
+     return jsonify({"open": True, "sales_cash": sales_cash, "float_in": float_in, "collection": collection, "drawer_cash": float_in + sales_cash - collection})
+@@ -465,7 +629,14 @@
+     if session['role'] == 'kitchen': return redirect(url_for('kitchen'))
+     if session['role'] == 'courier': return redirect(url_for('courier'))
+     db = get_db()
+-    return render_template('cashier.html', menu=db.execute("SELECT * FROM menu WHERE available=1 ORDER BY sort_weight DESC, category, name").fetchall(), categories=db.execute("SELECT DISTINCT category FROM menu WHERE available=1 ORDER BY category").fetchall(), zones=db.execute("SELECT * FROM zones").fetchall(), shift=get_open_shift(), role=session['role'], shop_open=is_shop_open())
++    shift = get_open_shift()
++    expected_cash = 0
++    if shift:
++        sales_cash = db.execute("SELECT COALESCE(SUM(amount),0) FROM payments WHERE shift_id=? AND status='paid' AND method IN ('наличные','cash')", (shift['id'],)).fetchone()[0]
++        float_in = db.execute("SELECT COALESCE(SUM(amount),0) FROM cash_operations WHERE shift_id=? AND op_type='float_in'", (shift['id'],)).fetchone()[0]
++        collection = db.execute("SELECT COALESCE(SUM(amount),0) FROM cash_operations WHERE shift_id=? AND op_type='collection'", (shift['id'],)).fetchone()[0]
++        expected_cash = sales_cash + float_in - collection
++    return render_template('cashier.html', menu=db.execute("SELECT * FROM menu WHERE available=1 ORDER BY sort_weight DESC, category, name").fetchall(), categories=db.execute("SELECT DISTINCT category FROM menu WHERE available=1 ORDER BY category").fetchall(), zones=db.execute("SELECT * FROM zones").fetchall(), shift=shift, expected_cash=expected_cash, role=session['role'], shop_open=is_shop_open())
+ 
+ @app.route('/kitchen')
+ @login_required('admin', 'kitchen')
+@@ -1388,9 +1559,16 @@
+                 settle_client_loyalty(db, order, direction=-1)
+             if (order['used_bonus'] or 0) > 0 and order['phone']:
+                 db.execute("UPDATE clients SET bonuses = bonuses + ? WHERE phone=?", (order['used_bonus'], order['phone']))
+-            db.execute("UPDATE payments SET status='refunded' WHERE order_id=?", (order_id,))
++            reason = clean_str(data.get('reason', 'Отменен сотрудником'), 120)
++            paid_rows = db.execute("SELECT method, amount FROM payments WHERE order_id=? AND status='paid'", (order_id,)).fetchall()
++            for p in paid_rows:
++                db.execute("INSERT INTO refunds (order_id, shift_id, method, amount, reason, created_at, user_id) VALUES (?,?,?,?,?,?,?)",
++                           (order_id, order['shift_id'], p['method'], p['amount'], reason, now_str, session.get('user_id')))
++            if paid_rows:
++                db.execute("UPDATE orders SET payment_status='refunded' WHERE id=?", (order_id,))
++            db.execute("UPDATE payments SET status='refunded' WHERE order_id=? AND status='paid'", (order_id,))
+             db.execute("UPDATE orders SET status='cancelled', stock_deducted=0, bonus_awarded=0, cancel_reason=? WHERE id=?",
+-                       (clean_str(data.get('reason', 'Отменен сотрудником'), 120), order_id))
++                       (reason, order_id))
+ 
+         elif new_status == 'done':
+             if not order['bonus_awarded']:
+@@ -1414,7 +1592,7 @@
+ 
+ @app.context_processor
+ def inject_csrf_token():
+-    return dict(csrf_token=lambda: '')
++    return dict(csrf_token=get_csrf_token)
+ 
+ 
+ @app.route('/api/customer_lookup')
+@@ -1443,8 +1621,11 @@
+     print("="*55)
+     print("🛡️ СИСТЕМА КРЕВЕТКА PRO (PRODUCTION HARDENED) ЗАПУЩЕНА!")
+     print("="*55)
+-    try:
+-        raise ImportError()
+-        serve(app, host='0.0.0.0', port=5000, threads=8)
+-    except ImportError:
+-        app.run(host='0.0.0.0', port=5000, debug=True, use_reloader=False, threaded=True)
++    if os.environ.get('SUSHI_DEBUG') == '1':
++        app.run(host='127.0.0.1', port=int(os.environ.get('SUSHI_PORT', '5000')), debug=True, use_reloader=False, threaded=True)
++    else:
++        from waitress import serve
++        host = os.environ.get('SUSHI_HOST', '0.0.0.0')
++        port = int(os.environ.get('SUSHI_PORT', '5000'))
++        print(f"🚀 Waitress слушает http://{host}:{port}")
++        serve(app, host=host, port=port, threads=8)
+diff -ruN backups/pA_20261101_142232/templates/autopilot.html templates/autopilot.html
+--- backups/pA_20261101_142232/templates/autopilot.html	2026-11-01 13:47:04.647986039 +0300
++++ templates/autopilot.html	2026-11-01 14:26:22.243956876 +0300
+@@ -1,5 +1,5 @@
+ <!DOCTYPE html>
+-<html lang="ru"><head><meta charset="UTF-8"><title>Чек-лист Повара & Автопилот ULTRA X2</title>
++<html lang="ru"><head><meta charset="UTF-8"><meta name="csrf-token" content="{{ csrf_token() }}"><script src="/static/security.js"></script><title>Чек-лист Повара & Автопилот ULTRA X2</title>
+ <link rel="stylesheet" href="/static/pro_style.css">
+ <style>
+ .prep-row.done-prep { opacity: 0.45; text-decoration: line-through; background: rgba(16,185,129,0.08); }
+diff -ruN backups/pA_20261101_142232/templates/cashier.html templates/cashier.html
+--- backups/pA_20261101_142232/templates/cashier.html	2026-11-01 13:42:17.227989595 +0300
++++ templates/cashier.html	2026-11-01 14:26:22.243956876 +0300
+@@ -1,5 +1,5 @@
+ <!DOCTYPE html>
+-<html lang="ru"><head><meta charset="UTF-8"><title>Креветка ULTRA — Суши Терминал</title>
++<html lang="ru"><head><meta charset="UTF-8"><meta name="csrf-token" content="{{ csrf_token() }}"><script src="/static/security.js"></script><title>Креветка ULTRA — Суши Терминал</title>
+ <link rel="stylesheet" href="/static/pro_style.css">
+ <style>
+ body { display: flex; height: 100vh; overflow: hidden; }
+@@ -78,6 +78,17 @@
+             <span class="ultra-badge">ULTRA POS</span>
+         </div>
+         <div class="top-nav-btns">
++            {% if shift %}
++            <form method="post" action="/shift/close" style="display:inline-flex;gap:6px;align-items:center" onsubmit="return confirm('Закрыть смену и зафиксировать кассу?')">
++                <input type="number" name="actual_cash" min="0" step="1" value="{{ expected_cash or 0 }}" title="Фактическая наличность в кассе, ₽" style="width:96px;padding:7px;border-radius:8px;border:1px solid var(--border);background:var(--bg-card);color:var(--text-main)">
++                <button class="btn btn-yellow nav-big-btn">🔒 Смена</button>
++            </form>
++            {% else %}
++            <form method="post" action="/shift/open" style="display:inline-flex;gap:6px;align-items:center">
++                <input type="number" name="float_in" min="0" step="1" value="0" title="Размен при открытии, ₽" style="width:96px;padding:7px;border-radius:8px;border:1px solid var(--border);background:var(--bg-card);color:var(--text-main)">
++                <button class="btn btn-green nav-big-btn">🔓 Смена</button>
++            </form>
++            {% endif %}
+             <button class="btn btn-green nav-big-btn" onclick="doCashOp('float_in')">💵 Размен</button>
+             <button class="btn btn-yellow nav-big-btn" onclick="doCashOp('collection')">🏦 Инкасс.</button>
+             <a href="/autopilot" class="btn btn-blue nav-big-btn">🔪 Чек-лист</a>
+diff -ruN backups/pA_20261101_142232/templates/kitchen.html templates/kitchen.html
+--- backups/pA_20261101_142232/templates/kitchen.html	2026-11-01 13:47:04.647986039 +0300
++++ templates/kitchen.html	2026-11-01 14:26:22.243956876 +0300
+@@ -1,5 +1,5 @@
+ <!DOCTYPE html>
+-<html lang="ru"><head><meta charset="UTF-8"><title>KDS Кухня ULTRA X2 — Креветка</title>
++<html lang="ru"><head><meta charset="UTF-8"><meta name="csrf-token" content="{{ csrf_token() }}"><script src="/static/security.js"></script><title>KDS Кухня ULTRA X2 — Креветка</title>
+ <link rel="stylesheet" href="/static/pro_style.css">
+ <style>
+ .kds-subbar { background: var(--bg-panel); border-bottom: 1px solid var(--border); padding: 12px 20px; display: flex; justify-content: space-between; align-items: center; gap: 12px; flex-wrap: wrap; }
+diff -ruN backups/pA_20261101_142232/templates/login.html templates/login.html
+--- backups/pA_20261101_142232/templates/login.html	2026-11-01 02:26:18.619844790 +0300
++++ templates/login.html	2026-11-01 14:26:22.243956876 +0300
+@@ -1,5 +1,6 @@
+ <!DOCTYPE html>
+ <html lang="ru"><head><meta charset="UTF-8"><meta name="viewport" content="width=device-width, initial-scale=1.0">
++<meta name="csrf-token" content="{{ csrf_token() }}"><script src="/static/security.js"></script>
+ <title>Вход в систему — Креветка PRO</title>
+ <link rel="stylesheet" href="/static/pro_style.css">
+ <style>
+diff -ruN backups/pA_20261101_142232/templates/public_site.html templates/public_site.html
+--- backups/pA_20261101_142232/templates/public_site.html	2026-11-01 03:33:39.919978366 +0300
++++ templates/public_site.html	2026-11-01 14:26:22.243956876 +0300
+@@ -3,6 +3,7 @@
+ <head>
+ <meta charset="UTF-8">
+ <meta name="viewport" content="width=device-width, initial-scale=1.0">
++<meta name="csrf-token" content="{{ csrf_token() }}"><script src="/static/security.js"></script>
+ <title>🍣 {{ brand.brand_name }} — Доставка роллов и пиццы</title>
+ <link rel="stylesheet" href="/static/pro_style.css">
+ <style>
+diff -ruN backups/pA_20261101_142232/templates/reports.html templates/reports.html
+--- backups/pA_20261101_142232/templates/reports.html	2026-11-01 00:56:11.211911678 +0300
++++ templates/reports.html	2026-11-01 14:26:22.243956876 +0300
+@@ -8,9 +8,9 @@
+ </head><body>
+ <h1>📊 Z-Отчеты</h1><a href="/admin">← Назад</a>
+ <table>
+-<tr><th>Смена</th><th>Открыта</th><th>Закрыта</th><th>Выручка</th><th>Нал</th><th>Карта</th><th>Размен/инкассация</th><th>В кассе</th></tr>
++<tr><th>Смена</th><th>Открыта</th><th>Закрыта</th><th>Выручка</th><th>Нал</th><th>Карта</th><th>Размен/инкассация</th><th>В кассе</th><th>Ожидаемо</th><th>Факт</th><th>Расхождение</th></tr>
+ {% for s in shifts %}
+ <tr><td>#{{ s.id }}</td><td>{{ s.opened_at }}</td><td>{{ s.closed_at or '—' }}</td>
+-<td style="color:#30d158;font-weight:bold">{{ s.total_revenue }} ₽</td><td>{{ s.total_cash }} ₽</td><td>{{ s.total_card }} ₽</td><td>{{ s.cash_ops or 0 }} ₽</td><td><b>{{ (s.total_cash or 0) + (s.cash_ops or 0) }} ₽</b></td></tr>
++<td style="color:#30d158;font-weight:bold">{{ s.total_revenue }} ₽</td><td>{{ s.total_cash }} ₽</td><td>{{ s.total_card }} ₽</td><td>{{ s.cash_ops or 0 }} ₽</td><td><b>{{ (s.total_cash or 0) + (s.cash_ops or 0) }} ₽</b></td><td>{{ s.expected_cash or 0 }} ₽</td><td>{{ s.actual_cash or 0 }} ₽</td><td style="color:{{ '#ff453a' if (s.discrepancy or 0) < 0 else '#30d158' }};font-weight:bold">{{ s.discrepancy or 0 }} ₽</td></tr>
+ {% endfor %}
+ </table></body></html>

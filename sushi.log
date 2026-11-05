@@ -1,0 +1,69 @@
+nohup: ввод игнорируется
+=======================================================
+🚀 СИСТЕМА ЗАПУЩЕНА!
+=======================================================
+ * Serving Flask app 'app'
+ * Debug mode: on
+[31m[1mWARNING: This is a development server. Do not use it in a production deployment. Use a production WSGI server instead.[0m
+ * Running on all addresses (0.0.0.0)
+ * Running on http://127.0.0.1:5000
+ * Running on http://192.168.0.73:5000
+[33mPress CTRL+C to quit[0m
+ * Restarting with stat
+ * Debugger is active!
+ * Debugger PIN: 888-021-339
+127.0.0.1 - - [02/Nov/2026 01:44:49] "GET /site HTTP/1.1" 200 -
+127.0.0.1 - - [02/Nov/2026 01:44:49] "GET /static/uploads/44515e51-c040-486d-816a-ef5c6b501434.webp HTTP/1.1" 200 -
+127.0.0.1 - - [02/Nov/2026 01:44:49] "GET /static/uploads/cef3b23d-cd9f-4c6a-b1de-e7b6a1feb3c0.webp HTTP/1.1" 200 -
+127.0.0.1 - - [02/Nov/2026 01:44:49] "GET /static/uploads/8b0232ff-a315-4ab8-bd2e-4b197f8ba318.webp HTTP/1.1" 200 -
+127.0.0.1 - - [02/Nov/2026 01:44:49] "GET /static/uploads/a0de486c-426f-4602-a743-bc1c5e42dfb2.webp HTTP/1.1" 200 -
+127.0.0.1 - - [02/Nov/2026 01:44:49] "GET /static/uploads/b4730ee8-c1fb-4564-a0ec-975d0efba194.webp HTTP/1.1" 200 -
+127.0.0.1 - - [02/Nov/2026 01:44:49] "GET /static/uploads/04172405-3076-41fa-b722-7cd2f17fa6ca.webp HTTP/1.1" 200 -
+127.0.0.1 - - [02/Nov/2026 01:44:49] "GET /static/uploads/189375fd-dbc8-43e3-882f-1cb02a9d1a1b.webp HTTP/1.1" 200 -
+127.0.0.1 - - [02/Nov/2026 01:44:49] "GET /static/uploads/ecdd8fcb-fa70-4d89-acdd-cb24cd197ccb.jpeg HTTP/1.1" 200 -
+127.0.0.1 - - [02/Nov/2026 01:44:49] "GET /static/uploads/a436d885-13ae-4da7-98e1-e7d179bddca2.jpeg HTTP/1.1" 200 -
+127.0.0.1 - - [02/Nov/2026 01:44:49] "GET /static/uploads/5c66e248-bcf1-4ee5-9c6e-7b8862c91f54.jpeg HTTP/1.1" 200 -
+127.0.0.1 - - [02/Nov/2026 01:44:49] "GET /static/uploads/4525e2b0-f87a-48c8-8618-9c5c4d0c6049.jpeg HTTP/1.1" 200 -
+127.0.0.1 - - [02/Nov/2026 01:44:49] "GET /static/uploads/0cf85b7c-62e2-4abf-af46-48f8cefd9869.jpeg HTTP/1.1" 200 -
+127.0.0.1 - - [02/Nov/2026 01:44:49] "GET /static/uploads/5b142212-b441-40bb-8e01-a9e9c0cfd5ee.jpeg HTTP/1.1" 200 -
+127.0.0.1 - - [02/Nov/2026 01:44:49] "GET /static/uploads/e6eaf890-8434-48d9-882a-97d353716cff.jpeg HTTP/1.1" 200 -
+127.0.0.1 - - [02/Nov/2026 01:44:49] "GET /static/uploads/3008dd8c-fbc5-47a5-b204-3fdd0f07d7f6.jpeg HTTP/1.1" 200 -
+127.0.0.1 - - [02/Nov/2026 01:44:49] "GET /static/uploads/236ee304-7f2b-4c1f-abc4-1726f508c935.jpeg HTTP/1.1" 200 -
+127.0.0.1 - - [02/Nov/2026 01:44:49] "GET /static/uploads/304b90ad-42bf-4a53-946e-eaa47bf2d532.jpeg HTTP/1.1" 200 -
+127.0.0.1 - - [02/Nov/2026 01:44:49] "[33mGET /favicon.ico HTTP/1.1[0m" 404 -
+127.0.0.1 - - [02/Nov/2026 01:44:49] "GET /manifest.json HTTP/1.1" 200 -
+127.0.0.1 - - [02/Nov/2026 01:44:49] "GET /static/icon-192.png HTTP/1.1" 200 -
+127.0.0.1 - - [02/Nov/2026 01:44:51] "GET /sw.js HTTP/1.1" 200 -
+127.0.0.1 - - [02/Nov/2026 01:44:54] "[32mGET /admin HTTP/1.1[0m" 302 -
+127.0.0.1 - - [02/Nov/2026 01:44:54] "GET /login HTTP/1.1" 200 -
+127.0.0.1 - - [02/Nov/2026 01:44:56] "[36mGET /sw.js HTTP/1.1[0m" 304 -
+127.0.0.1 - - [02/Nov/2026 01:45:05] "[32mPOST /login HTTP/1.1[0m" 302 -
+127.0.0.1 - - [02/Nov/2026 01:45:05] "GET / HTTP/1.1" 200 -
+127.0.0.1 - - [02/Nov/2026 01:45:06] "[36mGET /sw.js HTTP/1.1[0m" 304 -
+127.0.0.1 - - [02/Nov/2026 01:45:10] "GET /api/orders?status=all_active HTTP/1.1" 200 -
+127.0.0.1 - - [02/Nov/2026 01:45:11] "GET /api/all_orders?date=2026-11-02 HTTP/1.1" 200 -
+127.0.0.1 - - [02/Nov/2026 01:45:14] "GET /admin HTTP/1.1" 200 -
+127.0.0.1 - - [02/Nov/2026 01:45:14] "[36mGET /static/uploads/44515e51-c040-486d-816a-ef5c6b501434.webp HTTP/1.1[0m" 304 -
+127.0.0.1 - - [02/Nov/2026 01:45:14] "[36mGET /static/uploads/cef3b23d-cd9f-4c6a-b1de-e7b6a1feb3c0.webp HTTP/1.1[0m" 304 -
+127.0.0.1 - - [02/Nov/2026 01:45:14] "[36mGET /static/uploads/a0de486c-426f-4602-a743-bc1c5e42dfb2.webp HTTP/1.1[0m" 304 -
+127.0.0.1 - - [02/Nov/2026 01:45:14] "[36mGET /static/uploads/189375fd-dbc8-43e3-882f-1cb02a9d1a1b.webp HTTP/1.1[0m" 304 -
+127.0.0.1 - - [02/Nov/2026 01:45:14] "[36mGET /static/uploads/8b0232ff-a315-4ab8-bd2e-4b197f8ba318.webp HTTP/1.1[0m" 304 -
+127.0.0.1 - - [02/Nov/2026 01:45:14] "[36mGET /static/uploads/04172405-3076-41fa-b722-7cd2f17fa6ca.webp HTTP/1.1[0m" 304 -
+127.0.0.1 - - [02/Nov/2026 01:45:14] "[36mGET /static/uploads/ecdd8fcb-fa70-4d89-acdd-cb24cd197ccb.jpeg HTTP/1.1[0m" 304 -
+127.0.0.1 - - [02/Nov/2026 01:45:14] "[36mGET /static/uploads/b4730ee8-c1fb-4564-a0ec-975d0efba194.webp HTTP/1.1[0m" 304 -
+127.0.0.1 - - [02/Nov/2026 01:45:14] "[36mGET /static/uploads/5c66e248-bcf1-4ee5-9c6e-7b8862c91f54.jpeg HTTP/1.1[0m" 304 -
+127.0.0.1 - - [02/Nov/2026 01:45:14] "[36mGET /static/uploads/4525e2b0-f87a-48c8-8618-9c5c4d0c6049.jpeg HTTP/1.1[0m" 304 -
+127.0.0.1 - - [02/Nov/2026 01:45:14] "[36mGET /static/uploads/a436d885-13ae-4da7-98e1-e7d179bddca2.jpeg HTTP/1.1[0m" 304 -
+127.0.0.1 - - [02/Nov/2026 01:45:14] "[36mGET /static/uploads/5b142212-b441-40bb-8e01-a9e9c0cfd5ee.jpeg HTTP/1.1[0m" 304 -
+127.0.0.1 - - [02/Nov/2026 01:45:14] "[36mGET /static/uploads/3008dd8c-fbc5-47a5-b204-3fdd0f07d7f6.jpeg HTTP/1.1[0m" 304 -
+127.0.0.1 - - [02/Nov/2026 01:45:14] "[36mGET /static/uploads/0cf85b7c-62e2-4abf-af46-48f8cefd9869.jpeg HTTP/1.1[0m" 304 -
+127.0.0.1 - - [02/Nov/2026 01:45:14] "[36mGET /static/uploads/236ee304-7f2b-4c1f-abc4-1726f508c935.jpeg HTTP/1.1[0m" 304 -
+127.0.0.1 - - [02/Nov/2026 01:45:14] "[36mGET /static/uploads/e6eaf890-8434-48d9-882a-97d353716cff.jpeg HTTP/1.1[0m" 304 -
+127.0.0.1 - - [02/Nov/2026 01:45:14] "[36mGET /static/uploads/304b90ad-42bf-4a53-946e-eaa47bf2d532.jpeg HTTP/1.1[0m" 304 -
+127.0.0.1 - - [02/Nov/2026 01:45:15] "[36mGET /manifest.json HTTP/1.1[0m" 304 -
+127.0.0.1 - - [02/Nov/2026 01:45:15] "[36mGET /static/icon-192.png HTTP/1.1[0m" 304 -
+127.0.0.1 - - [02/Nov/2026 01:45:16] "[36mGET /sw.js HTTP/1.1[0m" 304 -
+127.0.0.1 - - [02/Nov/2026 01:45:21] "GET /warehouse HTTP/1.1" 200 -
+127.0.0.1 - - [02/Nov/2026 01:45:21] "[36mGET /manifest.json HTTP/1.1[0m" 304 -
+127.0.0.1 - - [02/Nov/2026 01:45:21] "[36mGET /static/icon-192.png HTTP/1.1[0m" 304 -
+127.0.0.1 - - [02/Nov/2026 01:45:22] "[36mGET /sw.js HTTP/1.1[0m" 304 -

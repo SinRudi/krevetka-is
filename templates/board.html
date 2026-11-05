@@ -1,0 +1,53 @@
+<!DOCTYPE html><html lang="ru"><head><meta name="csrf-token" content="{{ csrf_token() }}"><script src="/static/security.js"></script><meta charset="UTF-8">
+<title>Табло готовности — {{ brand.brand_name }}</title>
+<link rel="stylesheet" href="/static/pro_style.css">
+<style>
+body{margin:0;padding:25px;height:100vh;box-sizing:border-box;display:flex;flex-direction:column;overflow:hidden}
+.top{display:flex;justify-content:space-between;align-items:center;border-bottom:2px solid var(--border);padding-bottom:15px;margin-bottom:20px}
+.logo{font-size:32px;font-weight:900;color:var(--accent)}
+.load-pill{padding:10px 20px;border-radius:14px;font-size:20px;font-weight:bold;background:var(--bg-panel);border:1px solid var(--border)}
+.cols{display:grid;grid-template-columns:1fr 1fr;gap:30px;flex:1;min-height:0}
+.col{background:var(--bg-panel);border:1px solid var(--border);border-radius:22px;padding:25px;display:flex;flex-direction:column}
+.col h2{margin:0 0 20px;font-size:30px;text-align:center;padding-bottom:12px;border-bottom:1px solid var(--border)}
+.num-grid{display:grid;grid-template-columns:repeat(auto-fill,minmax(140px,1fr));gap:16px;align-content:start}
+.num-box{padding:22px 10px;border-radius:16px;text-align:center;font-size:38px;font-weight:900}
+.cooking-box{background:rgba(245,158,11,0.15);border:2px solid #f59e0b;color:#f59e0b}
+.ready-box{background:rgba(16,185,129,0.2);border:2px solid #10b981;color:#10b981;animation:pulse 2s infinite}
+@keyframes pulse{0%{transform:scale(1)}50%{transform:scale(1.04)}100%{transform:scale(1)}}
+</style><link rel="stylesheet" href="/static/ui.css">
+</head><body>
+<div class="top">
+    <div class="logo"> {{ brand.brand_name }} — ТАБЛО ЗАКАЗОВ</div>
+    <div id="load-badge" class="load-pill">● Среднее время ожидания: ~35 мин</div>
+</div>
+<div class="cols">
+    <div class="col">
+        <h2 style="color:#f59e0b"> ГОТОВЯТСЯ НА КУХНЕ</h2>
+        <div id="cooking-list" class="num-grid"></div>
+    </div>
+    <div class="col">
+        <h2 style="color:#10b981">✓ ГОТОВО К ВЫДАЧЕ / КУРЬЕРАМ</h2>
+        <div id="ready-list" class="num-grid"></div>
+    </div>
+</div>
+<script>
+let prevReadyIds = [];
+function updateBoard(){
+    fetch('/api/kitchen_load').then(r=>r.json()).then(d=>{
+        const b = document.getElementById('load-badge');
+        b.innerText = `${d.level} • Ожидание ~${d.est_minutes} мин`;
+        b.style.color = d.color;
+        document.getElementById('cooking-list').innerHTML = d.cooking.map(o=>`<div class="num-box cooking-box">#${o.id}</div>`).join('');
+        document.getElementById('ready-list').innerHTML = d.ready.map(o=>`<div class="num-box ready-box">#${o.id}</div>`).join('');
+        const curIds = d.ready.map(o=>o.id);
+        curIds.forEach(id => {
+            if(!prevReadyIds.includes(id) && 'speechSynthesis' in window){
+                const u = new SpeechSynthesisUtterance("Заказ номер " + id + " готов");
+                u.lang = 'ru-RU'; window.speechSynthesis.speak(u);
+            }
+        });
+        prevReadyIds = curIds;
+    });
+}
+setInterval(updateBoard, 3000); updateBoard();
+</script></body></html>

@@ -1,0 +1,151 @@
+<!DOCTYPE html>
+<html lang="ru"><head><meta charset="UTF-8">
+<title>Конструктор зон доставки — КРЕВЕТКА Pro</title>
+<link rel="stylesheet" href="/static/pro_style.css">
+<link rel="stylesheet" href="https://unpkg.com/leaflet@1.9.4/dist/leaflet.css" />
+<script src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js"></script>
+<style>
+.editor-grid { display: grid; grid-template-columns: 380px 1fr; gap: 20px; max-width: 1450px; margin: 20px auto; padding: 0 20px; height: calc(100vh - 95px); }
+.editor-sidebar { background: var(--bg-card); border: 1px solid var(--border); border-radius: 16px; padding: 18px; display: flex; flex-direction: column; overflow-y: auto; }
+#editor-map { width: 100%; height: 100%; border-radius: 16px; border: 1px solid var(--border); background:#0c0c0f; }
+/* Тёмная подложка карты под дизайн ERP, чтобы светлые тайлы не слепили */
+#editor-map .leaflet-tile-pane { filter: brightness(0.62) invert(1) contrast(2.3) hue-rotate(190deg) saturate(0.32) brightness(0.78); }
+#editor-map .leaflet-control-attribution { background:rgba(9,9,11,0.78) !important; color:#a1a1aa !important; }
+#editor-map .leaflet-control-attribution a { color:#38bdf8 !important; }
+#editor-map .leaflet-bar a { background:#18181b !important; color:#fafafa !important; border-color:#27272a !important; }
+#editor-map .leaflet-bar a:hover { background:#27272a !important; }
+#editor-map .leaflet-popup-content-wrapper, #editor-map .leaflet-popup-tip { background:#18181b !important; color:#fafafa !important; }
+#editor-map .leaflet-tooltip { background:#18181b !important; color:#fafafa !important; border-color:#3f3f46 !important; }
+.zone-row { background: var(--bg-panel); border: 1px solid var(--border); border-radius: 10px; padding: 10px 12px; margin-bottom: 8px; display: flex; justify-content: space-between; align-items: center; }
+</style>
+</head>
+<body>
+<div class="pro-topbar">
+    <div class="pro-brand"><span> КОНСТРУКТОР ЗОН ДОСТАВКИ</span><span class="pro-badge">КРЕВЕТКА PRO</span></div>
+    <div class="pro-nav">
+        <a href="/" class="btn btn-ghost">← В Кассу</a>
+        <a href="/site" target="_blank" class="btn btn-blue"> Открыть Сайт</a>
+        <a href="/admin" class="btn btn-ghost"> Админка</a>
+    </div>
+</div>
+
+<div class="editor-grid">
+    <div class="editor-sidebar">
+        <h3 style="margin:0 0 8px 0">+ Создать новую зону</h3>
+        <div style="font-size:12px;color:var(--text-muted);margin-bottom:12px">
+            1. Кликайте по карте справа, чтобы обвести нужный район точками.<br>
+            2. Укажите название и стоимость доставки.<br>
+            3. Нажмите «Сохранить зону».
+        </div>
+        <input type="text" id="z-name" placeholder="Название района (напр. Западный)" style="margin-bottom:8px;width:100%">
+        <div style="display:grid;grid-template-columns:1fr 80px;gap:8px;margin-bottom:10px">
+            <input type="number" id="z-fee" placeholder="Стоимость доставки (₽)" value="150">
+            <input type="color" id="z-color" value="#ff5e00" style="height:42px;padding:4px;cursor:pointer">
+        </div>
+        <div style="display:flex;gap:8px;margin-bottom:18px">
+            <button class="btn btn-ghost" style="flex:1" onclick="resetDraftPoints()">↺ Сбросить точки (<span id="pts-cnt">0</span>)</button>
+            <button class="btn btn-green" style="flex:1.4" onclick="saveNewZone()"> Сохранить зону</button>
+        </div>
+
+        <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:8px">
+            <h4 style="margin:0">Ваши активные зоны:</h4>
+            <button onclick="clearAllZones()" style="background:none;border:none;color:var(--red);cursor:pointer;font-size:12px;font-weight:800">Очистить все</button>
+        </div>
+        <div id="saved-zones-list" style="flex:1;overflow-y:auto"></div>
+    </div>
+    <div id="editor-map"></div>
+</div>
+
+<script>
+function esc(v){return String(v==null?'':v).replace(/[&<>"']/g,function(c){return {'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c];});}
+let map = L.map('editor-map').setView([66.036, 60.145], 12);
+L.tileLayer('https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png').addTo(map);
+
+let draftCoords = [];
+let draftPolygon = null;
+let draftMarkers = [];
+let savedLayers = [];
+
+map.on('click', function(e) {
+    draftCoords.push([parseFloat(e.latlng.lat.toFixed(5)), parseFloat(e.latlng.lng.toFixed(5))]);
+    document.getElementById('pts-cnt').innerText = draftCoords.length;
+    let m = L.circleMarker(e.latlng, {radius: 5, color: '#fff', fillColor: '#ff5e00', fillOpacity: 1}).addTo(map);
+    draftMarkers.push(m);
+    if (draftPolygon) map.removeLayer(draftPolygon);
+    draftPolygon = L.polygon(draftCoords, {color: document.getElementById('z-color').value, fillOpacity: 0.3}).addTo(map);
+});
+
+function resetDraftPoints() {
+    draftCoords = [];
+    document.getElementById('pts-cnt').innerText = '0';
+    if (draftPolygon) { map.removeLayer(draftPolygon); draftPolygon = null; }
+    draftMarkers.forEach(m => map.removeLayer(m));
+    draftMarkers = [];
+}
+
+function saveNewZone() {
+    let name = document.getElementById('z-name').value.trim();
+    let fee = parseFloat(document.getElementById('z-fee').value) || 0;
+    let color = document.getElementById('z-color').value;
+    if (!name) return alert('Введите название зоны!');
+    fetch('/api/zones_custom', {
+        method: 'POST', headers: {'Content-Type': 'application/json'},
+        body: JSON.stringify({action: 'save', name, fee, color, polygon_coords: JSON.stringify(draftCoords)})
+    }).then(r=>r.json()).then(d => {
+        if (d.success) {
+            document.getElementById('z-name').value = '';
+            resetDraftPoints();
+            loadZones();
+        }
+    });
+}
+
+function deleteZone(id) {
+    fetch('/api/zones_custom', {
+        method: 'POST', headers: {'Content-Type': 'application/json'},
+        body: JSON.stringify({action: 'delete', id})
+    }).then(()=>loadZones());
+}
+
+function clearAllZones() {
+    if (!confirm('Удалить все зоны доставки?')) return;
+    fetch('/api/zones_custom', {
+        method: 'POST', headers: {'Content-Type': 'application/json'},
+        body: JSON.stringify({action: 'clear_all'})
+    }).then(()=>loadZones());
+}
+
+function loadZones() {
+    savedLayers.forEach(l => map.removeLayer(l));
+    savedLayers = [];
+    fetch('/api/zones_custom').then(r=>r.json()).then(d => {
+        let list = d.zones || [];
+        let box = document.getElementById('saved-zones-list');
+        if (!list.length) {
+            box.innerHTML = '<div style="color:var(--text-muted);font-size:13px">Зон пока нет. Нарисуйте первую зону на карте справа!</div>';
+            return;
+        }
+        box.innerHTML = list.map(z => `
+            <div class="zone-row">
+                <div>
+                    <span style="display:inline-block;width:10px;height:10px;border-radius:50%;background:${esc(z.color)};margin-right:6px"></span>
+                    <b>${esc(z.name)}</b> — <span style="color:var(--accent);font-weight:900">${esc(z.fee)} ₽</span>
+                </div>
+                <button class="btn btn-red" style="padding:4px 9px;font-size:11px" onclick="deleteZone(${z.id})">✕</button>
+            </div>
+        `).join('');
+        list.forEach(z => {
+            try {
+                let c = JSON.parse(z.polygon_coords || '[]');
+                if (c.length >= 3) {
+                    let p = L.polygon(c, {color: z.color, fillOpacity: 0.25, weight: 2}).addTo(map);
+                    p.bindTooltip(`<b>${esc(z.name)}</b> (${esc(z.fee)} ₽)`);
+                    savedLayers.push(p);
+                }
+            } catch(e) {}
+        });
+    });
+}
+loadZones();
+</script>
+</body></html>

@@ -1,0 +1,945 @@
+
+@import url('https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700;800&family=JetBrains+Mono:wght@500;700&display=swap');
+
+:root {
+    --bg-main: #09090b !important;
+    --bg-panel: #121215 !important;
+    --bg-card: #18181b !important;
+    --bg-input: #09090b !important;
+    --text-main: #fafafa !important;
+    --text-muted: #a1a1aa !important;
+    --border: #27272a !important;
+    --accent: #ff6900 !important;
+    --accent-text: #ffffff !important;
+    --btn-grey: #27272a !important;
+    --status-new: #eab308 !important;
+    --status-cooking: #ff6900 !important;
+    --status-ready: #16a34a !important;
+    --status-delivering: #2563eb !important;
+    --status-done: #52525b !important;
+    --status-cancelled: #dc2626 !important;
+}
+
+body.light-theme {
+    --bg-main: #f4f4f5 !important;
+    --bg-panel: #f4f6f9 !important;
+    --bg-card: #ffffff !important;
+    --bg-input: #fafafa !important;
+    --text-main: #09090b !important;
+    --text-muted: #71717a !important;
+    --border: #e4e4e7 !important;
+}
+
+* {
+    box-sizing: border-box;
+    font-variant-numeric: tabular-nums;
+}
+
+body {
+    font-family: 'Inter', -apple-system, BlinkMacSystemFont, sans-serif !important;
+    background-color: var(--bg-main) !important;
+    background-image: none !important;
+    color: var(--text-main) !important;
+    letter-spacing: -0.015em;
+    -webkit-font-smoothing: antialiased;
+}
+
+body.has-ultra-dock {
+    padding-top: 48px !important;
+}
+
+::-webkit-scrollbar { width: 6px; height: 6px; }
+::-webkit-scrollbar-track { background: #09090b; }
+::-webkit-scrollbar-thumb { background: #27272a; border-radius: 3px; }
+::-webkit-scrollbar-thumb:hover { background: #3f3f46; }
+
+/* Верхний операционный бар (Dodo IS / Linear Style) */
+#krevetka-ultra-dock {
+    position: fixed;
+    top: 0; left: 0; right: 0;
+    height: 48px;
+    background: #09090b;
+    border-bottom: 1px solid #27272a;
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    padding: 0 14px;
+    z-index: 99999;
+    gap: 10px;
+}
+
+.dock-left-group {
+    display: flex;
+    align-items: center;
+    gap: 8px;
+}
+
+.dock-back-btn {
+    background: #18181b;
+    color: #fafafa;
+    border: 1px solid #27272a;
+    border-radius: 6px;
+    padding: 5px 10px;
+    font-size: 12px;
+    font-weight: 600;
+    cursor: pointer;
+    display: inline-flex;
+    align-items: center;
+    gap: 5px;
+    text-decoration: none;
+    transition: border-color 0.15s, background 0.15s;
+}
+.dock-back-btn:hover {
+    background: #27272a;
+    border-color: #52525b;
+}
+
+.ultra-brand {
+    display: flex;
+    align-items: center;
+    gap: 8px;
+    font-weight: 800;
+    font-size: 13px;
+    color: #fafafa;
+    text-decoration: none;
+    letter-spacing: 0.04em;
+    text-transform: uppercase;
+    white-space: nowrap;
+}
+
+.ultra-brand-badge {
+    background: #ff6900;
+    color: #ffffff;
+    padding: 2px 6px;
+    border-radius: 4px;
+    font-size: 10px;
+    font-weight: 700;
+}
+
+.ultra-nav-links {
+    display: flex;
+    align-items: center;
+    gap: 2px;
+    overflow-x: auto;
+}
+
+.ultra-nav-link {
+    color: #a1a1aa !important;
+    text-decoration: none !important;
+    font-size: 12px;
+    font-weight: 600;
+    padding: 6px 10px;
+    border-radius: 6px;
+    transition: background 0.15s, color 0.15s;
+    white-space: nowrap;
+}
+.ultra-nav-link:hover {
+    color: #fafafa !important;
+    background: #18181b;
+}
+.ultra-nav-link.active {
+    background: #18181b;
+    color: #fafafa !important;
+    box-shadow: inset 0 -2px 0 #ff6900;
+    border-radius: 6px 6px 0 0;
+}
+
+.ultra-right-tools {
+    display: flex;
+    align-items: center;
+    gap: 8px;
+    font-size: 11px;
+    font-weight: 600;
+    white-space: nowrap;
+}
+
+.kpi-pill {
+    background: #121215;
+    border: 1px solid #27272a;
+    padding: 4px 8px;
+    border-radius: 5px;
+    color: #a1a1aa;
+    font-size: 11px;
+}
+.kpi-pill b { color: #fafafa; }
+
+.ultra-demo-btn {
+    background: #18181b !important;
+    color: #fafafa !important;
+    border: 1px solid #3f3f46 !important;
+    padding: 5px 10px !important;
+    border-radius: 6px !important;
+    font-size: 11px !important;
+    font-weight: 600 !important;
+    cursor: pointer !important;
+}
+.ultra-demo-btn:hover {
+    border-color: #ff6900 !important;
+    color: #ff6900 !important;
+}
+
+.ultra-clock {
+    font-family: 'JetBrains Mono', monospace;
+    background: #121215;
+    padding: 4px 8px;
+    border-radius: 5px;
+    border: 1px solid #27272a;
+    color: #a1a1aa;
+    font-size: 11px;
+}
+
+/* Шапка любой внутренней страницы с кнопками «← Назад» */
+.page-nav-header {
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+    background: #121215;
+    border: 1px solid #27272a;
+    border-radius: 8px;
+    padding: 12px 18px;
+    margin-bottom: 20px;
+    flex-wrap: wrap;
+    gap: 12px;
+}
+.page-nav-left {
+    display: flex;
+    align-items: center;
+    gap: 12px;
+    flex-wrap: wrap;
+}
+.page-nav-right {
+    display: flex;
+    align-items: center;
+    gap: 8px;
+    flex-wrap: wrap;
+}
+.btn-back-nav {
+    background: #18181b !important;
+    color: #fafafa !important;
+    border: 1px solid #3f3f46 !important;
+    padding: 7px 13px !important;
+    border-radius: 6px !important;
+    font-size: 12px !important;
+    font-weight: 600 !important;
+    text-decoration: none !important;
+    display: inline-flex !important;
+    align-items: center !important;
+    gap: 6px !important;
+    cursor: pointer !important;
+}
+.btn-back-nav:hover {
+    border-color: #ff6900 !important;
+    color: #ff6900 !important;
+}
+
+/* Панели и карточки */
+.stat-card, .chart-container, .export-box, .status-box, .box, .cart, .cart-section, .sidebar, .filter-panel, .modal-content, .card-panel {
+    background: var(--bg-panel) !important;
+    border: 1px solid var(--border) !important;
+    border-radius: 8px !important;
+    box-shadow: none !important;
+}
+
+.item, .order-card, .zone-card {
+    background: var(--bg-card) !important;
+    border: 1px solid var(--border) !important;
+    border-radius: 8px !important;
+    transition: border-color 0.15s ease !important;
+    box-shadow: none !important;
+}
+.item:hover, .order-card:hover {
+    border-color: #52525b !important;
+}
+
+.btn, .btn-submit, .btn-add, .btn-cook, button[type="submit"]:not([class]) {
+    background: #ff6900 !important;
+    color: #ffffff !important;
+    border: 1px solid #ff6900 !important;
+    border-radius: 6px !important;
+    font-weight: 600 !important;
+    box-shadow: none !important;
+}
+.btn:hover, .btn-submit:hover, .btn-add:hover, .btn-cook:hover, button[type="submit"]:not([class]):hover {
+    background: #e05c00 !important;
+}
+
+.btn-ready, .btn-done, .btn-edit {
+    background: #16a34a !important;
+    border: 1px solid #16a34a !important;
+    color: #ffffff !important;
+}
+.btn-danger, .btn-cancel {
+    background: #dc2626 !important;
+    border: 1px solid #dc2626 !important;
+    color: #ffffff !important;
+}
+
+input, select, textarea {
+    background: var(--bg-input) !important;
+    color: var(--text-main) !important;
+    border: 1px solid var(--border) !important;
+    border-radius: 6px !important;
+    padding: 8px 11px !important;
+    font-size: 13px !important;
+}
+input:focus, select:focus, textarea:focus {
+    outline: none !important;
+    border-color: #ff6900 !important;
+}
+
+table {
+    background: var(--bg-panel) !important;
+    border-radius: 8px !important;
+    overflow: hidden !important;
+    border: 1px solid var(--border) !important;
+    width: 100%;
+    border-collapse: collapse;
+}
+th {
+    background: #18181b !important;
+    color: #71717a !important;
+    font-weight: 600 !important;
+    font-size: 11px !important;
+    text-transform: uppercase !important;
+    letter-spacing: 0.05em !important;
+    padding: 10px 14px !important;
+    border-bottom: 1px solid var(--border) !important;
+    text-align: left;
+}
+td {
+    padding: 10px 14px !important;
+    border-bottom: 1px solid var(--border) !important;
+    font-size: 13px !important;
+}
+tr:hover td { background: #18181b !important; }
+
+.tab {
+    background: #121215 !important;
+    border: 1px solid var(--border) !important;
+    color: var(--text-muted) !important;
+    border-radius: 6px !important;
+    padding: 7px 14px !important;
+    font-size: 13px !important;
+    font-weight: 600 !important;
+    cursor: pointer;
+}
+.tab.active, .tab:hover {
+    background: #ff6900 !important;
+    color: #ffffff !important;
+    border-color: #ff6900 !important;
+}
+
+.roll-8-badge {
+    display: inline-flex;
+    align-items: center;
+    background: #18181b;
+    color: #d4d4d8;
+    border: 1px solid #27272a;
+    padding: 2px 7px;
+    border-radius: 4px;
+    font-size: 11px;
+    font-weight: 600;
+}
+
+.quick-chip {
+    background: #18181b;
+    border: 1px solid #27272a;
+    color: #d4d4d8;
+    padding: 5px 10px;
+    border-radius: 6px;
+    font-size: 12px;
+    font-weight: 500;
+    cursor: pointer;
+    text-decoration: none;
+    display: inline-flex;
+    align-items: center;
+    gap: 5px;
+}
+.quick-chip:hover {
+    border-color: #71717a;
+    color: #ffffff;
+}
+
+.card-qty-control {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    background: #121215;
+    border: 1px solid #ff6900;
+    border-radius: 6px;
+    padding: 2px;
+    width: 100%;
+}
+.card-qty-btn {
+    width: 32px;
+    height: 28px;
+    border-radius: 4px;
+    border: none;
+    background: #18181b;
+    color: #fafafa;
+    font-size: 16px;
+    font-weight: 700;
+    cursor: pointer;
+}
+.card-qty-btn:hover { background: #ff6900; color: #fff; }
+.card-qty-val { font-size: 13px; font-weight: 700; color: #fafafa; }
+
+.free-deliv-box {
+    background: #121215;
+    border: 1px solid #27272a;
+    border-radius: 6px;
+    padding: 9px 11px;
+    margin-bottom: 10px;
+}
+.free-deliv-text { font-size: 11px; font-weight: 600; color: #a1a1aa; margin-bottom: 6px; display: flex; justify-content: space-between; text-transform: uppercase; }
+.free-deliv-track { width: 100%; height: 4px; background: #27272a; border-radius: 2px; overflow: hidden; }
+.free-deliv-fill { height: 100%; background: #ff6900; transition: width 0.25s ease; }
+
+/* ============================================================
+   UI POLISH LAYER (v2) — общая доводка интерфейса
+   Добавлено поверх базовой темы: безопасно переопределяет хром,
+   карточки, таблицы, поля и адаптив верхней панели.
+   ============================================================ */
+
+:root {
+    --radius-sm: 6px;
+    --radius-md: 8px;
+    --radius-lg: 12px;
+    --shadow-1: 0 1px 2px rgba(0, 0, 0, 0.35);
+    --shadow-2: 0 18px 40px rgba(0, 0, 0, 0.45);
+}
+
+::selection { background: rgba(255, 105, 0, 0.35); color: #fff; }
+:focus-visible { outline: 2px solid #ff6900 !important; outline-offset: 2px; }
+
+/* ---------- Верхняя панель ---------- */
+#krevetka-ultra-dock {
+    height: 52px;
+    padding: 0 12px;
+    gap: 10px;
+    background: rgba(9, 9, 11, 0.94) !important;
+    border-bottom: 1px solid #232326 !important;
+    backdrop-filter: blur(16px);
+}
+body.has-ultra-dock { padding-top: 52px !important; }
+
+.dock-back-btn {
+    height: 30px;
+    padding: 0 10px !important;
+    white-space: nowrap;
+    flex: 0 0 auto;
+}
+.ultra-brand { flex: 0 0 auto; }
+
+.ultra-nav-links {
+    flex: 1 1 auto;
+    min-width: 0;
+    overflow-x: auto;
+    scrollbar-width: none;
+    -ms-overflow-style: none;
+    gap: 2px;
+    padding: 3px 0;
+}
+.ultra-nav-links::-webkit-scrollbar { display: none; }
+.ultra-nav-link { flex: 0 0 auto; padding: 6px 9px; }
+
+.ultra-right-tools { flex: 0 0 auto; gap: 6px; }
+
+@media (max-width: 1500px) {
+    .ultra-demo-btn { display: none !important; }
+}
+@media (max-width: 1320px) {
+    #dock-kpi-sla { display: none !important; }
+    .ultra-clock { display: none !important; }
+}
+@media (max-width: 1080px) {
+    #dock-kpi-rev { display: none !important; }
+    .ultra-brand-badge { display: none; }
+}
+@media (max-width: 860px) {
+    .ultra-nav-links { display: none; }
+    .kpi-pill { display: none !important; }
+}
+
+/* ---------- Шапка внутренней страницы ---------- */
+.page-nav-header {
+    background: #101013 !important;
+    border: 1px solid #232326 !important;
+    border-radius: 10px !important;
+    padding: 12px 16px !important;
+    gap: 10px;
+}
+.page-nav-left { gap: 10px; }
+.page-nav-left h1 { font-size: 17px !important; letter-spacing: -0.01em; }
+.page-nav-right { gap: 6px; }
+.btn-back-nav { height: 32px; padding: 0 11px !important; }
+
+/* ---------- Кнопки и чипы ---------- */
+.btn, .btn-submit, .btn-add, .btn-cook, button[type="submit"]:not([class]) {
+    min-height: 34px;
+    transition: background 0.14s ease, border-color 0.14s ease, transform 0.06s ease !important;
+}
+.btn:active, .btn-submit:active, .btn-add:active, .btn-cook:active, button[type="submit"]:not([class]):active {
+    transform: translateY(1px);
+}
+.quick-chip {
+    height: 32px;
+    transition: background 0.14s ease, border-color 0.14s ease, color 0.14s ease;
+}
+.quick-chip.active, .quick-chip.is-active {
+    background: #ff6900;
+    border-color: #ff6900;
+    color: #fff;
+}
+.btn[disabled], button[disabled] { opacity: 0.45; cursor: not-allowed; }
+
+/* ---------- Поля ---------- */
+input[type="checkbox"], input[type="radio"] {
+    width: 16px;
+    height: 16px;
+    padding: 0 !important;
+    margin: 0;
+    accent-color: #ff6900;
+    background: transparent !important;
+    border: 0 !important;
+    cursor: pointer;
+    vertical-align: -2px;
+}
+input::placeholder, textarea::placeholder { color: #71717a !important; }
+select { cursor: pointer; }
+input[type="number"] { font-variant-numeric: tabular-nums; }
+
+/* ---------- Таблицы ---------- */
+th { position: sticky; top: 0; z-index: 2; }
+td { vertical-align: middle; }
+td input:not([type="checkbox"]):not([type="radio"]),
+td select {
+    height: 32px !important;
+    padding: 4px 8px !important;
+    font-size: 12px !important;
+}
+td .btn, td .btn-cancel, td .btn-danger, td .btn-ready {
+    min-height: 30px;
+    padding: 4px 10px !important;
+    font-size: 12px !important;
+}
+td .btn {
+    background: #27272a !important;
+    border-color: #3f3f46 !important;
+    color: #fafafa !important;
+}
+td .btn:hover { background: #3f3f46 !important; }
+td .btn-ready {
+    background: #27272a !important;
+    border-color: #3f3f46 !important;
+    color: #fafafa !important;
+}
+td .btn-ready:hover { background: #16a34a !important; border-color: #16a34a !important; color: #fff !important; }
+td .btn-cancel, td .btn-danger {
+    background: rgba(220, 38, 38, 0.12) !important;
+    border-color: rgba(220, 38, 38, 0.45) !important;
+    color: #f87171 !important;
+}
+
+/* ---------- Карточки / статистика ---------- */
+.stat-card {
+    position: relative;
+    overflow: hidden;
+    transition: border-color 0.15s ease, background 0.15s ease;
+}
+.stat-card:hover { border-color: #3f3f46 !important; }
+.stat-card h3 { display: flex; align-items: center; gap: 6px; }
+
+.card-panel { background: #101013 !important; }
+
+/* ---------- Ссылки и мелочи ---------- */
+a { color: #ff8533; }
+a:hover { color: #ffa366; }
+.roll-8-badge { white-space: nowrap; }
+
+/* ---------- Светлая тема: базовые поверхности ---------- */
+body.light-theme #krevetka-ultra-dock {
+    background: rgba(255, 255, 255, 0.95) !important;
+    border-bottom-color: #e4e4e7 !important;
+}
+body.light-theme .ultra-nav-link { color: #52525b !important; }
+body.light-theme .ultra-nav-link:hover,
+body.light-theme .ultra-nav-link.active { background: #f4f4f5 !important; color: #09090b !important; }
+body.light-theme .kpi-pill,
+body.light-theme .ultra-clock { background: #f4f4f5 !important; border-color: #e4e4e7 !important; color: #52525b !important; }
+body.light-theme .kpi-pill b { color: #09090b; }
+body.light-theme th { background: #f4f4f5 !important; color: #71717a !important; }
+body.light-theme tr:hover td { background: #fafafa !important; }
+
+/* ---------- Анимации ---------- */
+@keyframes uiRise {
+    from { opacity: 0; transform: translateY(6px); }
+    to { opacity: 1; transform: translateY(0); }
+}
+.page-nav-header, .stats, .summary-strip { animation: uiRise 0.22s ease both; }
+
+@media (prefers-reduced-motion: reduce) {
+    *, *::before, *::after {
+        animation-duration: 0.001ms !important;
+        animation-iteration-count: 1 !important;
+        transition-duration: 0.001ms !important;
+    }
+}
+
+
+/* === SOFT MATTE LIGHT THEME (БЕЗ ОСЛЕПЛЯЮЩЕГО БЕЛОГО И ЧЕРНЫХ ПЯТЕН) === */
+html[data-theme="light"],
+body.light-theme,
+body.theme-light,
+html.light body {
+    --bg-main: #e8ecf2 !important;
+    --bg-panel: #f4f6f9 !important;
+    --bg-elevated: #edf0f5 !important;
+    --bg-card: #f4f6f9 !important;
+    --bg-input: #e2e6ee !important;
+    --text-main: #18181b !important;
+    --text-primary: #18181b !important;
+    --text-muted: #525866 !important;
+    --text-secondary: #525866 !important;
+    --border: #cbd2de !important;
+    --border-color: #cbd2de !important;
+    background: #e8ecf2 !important;
+    color: #18181b !important;
+}
+
+/* Перекрашиваем все карточки, панели, модалки и таблицы в спокойный матовый оттенок */
+html[data-theme="light"] .card-panel,
+html[data-theme="light"] .stat-card,
+html[data-theme="light"] .contour-card,
+html[data-theme="light"] .modal-content,
+html[data-theme="light"] .pin-terminal,
+html[data-theme="light"] .pos-panel,
+html[data-theme="light"] .order-card,
+html[data-theme="light"] .kds-card,
+body.light-theme .card-panel,
+body.light-theme .stat-card,
+body.light-theme .contour-card,
+body.light-theme .modal-content,
+body.light-theme .pin-terminal,
+body.light-theme .pos-panel,
+body.light-theme .order-card,
+body.light-theme .kds-card,
+body.theme-light .card-panel,
+body.theme-light .stat-card,
+body.theme-light .contour-card,
+body.theme-light .modal-content {
+    background: #f4f6f9 !important;
+    color: #18181b !important;
+    border-color: #cbd2de !important;
+    box-shadow: 0 2px 6px rgba(15, 23, 42, 0.05) !important;
+}
+
+/* Автоматический перехват жестких inline-стилей темной темы (#121215, #09090b, #18181b, #fafafa) */
+html[data-theme="light"] [style*="#121215"],
+html[data-theme="light"] [style*="#09090b"],
+html[data-theme="light"] [style*="#18181b"],
+html[data-theme="light"] [style*="rgb(18, 18, 21)"],
+html[data-theme="light"] [style*="rgb(9, 9, 11)"],
+body.light-theme [style*="#121215"],
+body.light-theme [style*="#09090b"],
+body.light-theme [style*="#18181b"],
+body.theme-light [style*="#121215"],
+body.theme-light [style*="#09090b"],
+body.theme-light [style*="#18181b"] {
+    background: #f4f6f9 !important;
+    color: #18181b !important;
+    border-color: #cbd2de !important;
+}
+
+html[data-theme="light"] [style*="#27272a"],
+body.light-theme [style*="#27272a"],
+body.theme-light [style*="#27272a"] {
+    border-color: #cbd2de !important;
+}
+
+html[data-theme="light"] [style*="color:#fafafa"],
+html[data-theme="light"] [style*="color: #fafafa"],
+html[data-theme="light"] [style*="color:#fff"],
+html[data-theme="light"] [style*="color: #fff"],
+html[data-theme="light"] [style*="color:#d4d4d8"],
+body.light-theme [style*="color:#fafafa"],
+body.light-theme [style*="color: #fafafa"],
+body.light-theme [style*="color:#d4d4d8"],
+body.theme-light [style*="color:#fafafa"],
+body.theme-light [style*="color: #fafafa"] {
+    color: #18181b !important;
+}
+
+html[data-theme="light"] [style*="color:#a1a1aa"],
+html[data-theme="light"] [style*="color: #a1a1aa"],
+body.light-theme [style*="color:#a1a1aa"],
+body.light-theme [style*="color: #a1a1aa"] {
+    color: #4b5563 !important;
+}
+
+/* Таблицы, инпуты, селекты и чипы в светлой теме */
+html[data-theme="light"] table,
+body.light-theme table,
+body.theme-light table {
+    background: #f4f6f9 !important;
+    color: #18181b !important;
+    border-color: #cbd2de !important;
+}
+
+html[data-theme="light"] th,
+body.light-theme th,
+body.theme-light th {
+    background: #e2e6ee !important;
+    color: #334155 !important;
+    border-bottom: 1px solid #cbd2de !important;
+}
+
+html[data-theme="light"] td,
+body.light-theme td,
+body.theme-light td {
+    color: #18181b !important;
+    border-bottom: 1px solid #e2e6ee !important;
+}
+
+html[data-theme="light"] input,
+html[data-theme="light"] select,
+html[data-theme="light"] textarea,
+body.light-theme input,
+body.light-theme select,
+body.light-theme textarea,
+body.theme-light input,
+body.theme-light select,
+body.theme-light textarea {
+    background: #e5e9f0 !important;
+    color: #111827 !important;
+    border: 1px solid #bdc6d4 !important;
+}
+
+html[data-theme="light"] .quick-chip,
+html[data-theme="light"] .btn-back-nav,
+html[data-theme="light"] .kpi-pill,
+html[data-theme="light"] .roll-8-badge,
+body.light-theme .quick-chip,
+body.light-theme .btn-back-nav,
+body.light-theme .kpi-pill,
+body.light-theme .roll-8-badge {
+    background: #e2e6ee !important;
+    color: #1e293b !important;
+    border-color: #bdc6d4 !important;
+}
+
+html[data-theme="light"] .quick-chip:hover,
+html[data-theme="light"] .btn-back-nav:hover,
+body.light-theme .quick-chip:hover,
+body.light-theme .btn-back-nav:hover {
+    background: #ff6900 !important;
+    color: #ffffff !important;
+    border-color: #ff6900 !important;
+}
+
+/* Верхний операционный бар в светлой теме */
+html[data-theme="light"] #ultra-erp-topbar,
+html[data-theme="light"] .erp-topbar,
+html[data-theme="light"] header,
+body.light-theme #ultra-erp-topbar,
+body.light-theme .erp-topbar,
+body.light-theme header {
+    background: #dfe4ec !important;
+    border-bottom: 1px solid #c3cbd8 !important;
+    color: #18181b !important;
+}
+
+html[data-theme="light"] .metric-row,
+body.light-theme .metric-row {
+    color: #475569 !important;
+}
+html[data-theme="light"] .metric-row b,
+body.light-theme .metric-row b {
+    color: #0f172a !important;
+}
+
+/* Сохраняем белый текст на ярких акцентных кнопках */
+html[data-theme="light"] .btn,
+html[data-theme="light"] .btn-ready,
+html[data-theme="light"] .submit-btn,
+body.light-theme .btn,
+body.light-theme .btn-ready,
+body.light-theme .submit-btn {
+    color: #ffffff !important;
+}
+
+
+/* === ФИКСИРОВАННЫЙ ВЕРХНИЙ ОПЕРАЦИОННЫЙ БАР (НЕ ЛОМАЕТ FLEX/GRID КАССЫ) === */
+body {
+    padding-top: 46px !important;
+}
+
+#ultra-erp-topbar.erp-topbar {
+    position: fixed !important;
+    top: 0 !important;
+    left: 0 !important;
+    right: 0 !important;
+    width: 100% !important;
+    height: 46px !important;
+    background: #111216 !important;
+    border-bottom: 1px solid #27272a !important;
+    display: flex !important;
+    flex-direction: row !important;
+    align-items: center !important;
+    justify-content: space-between !important;
+    padding: 0 12px !important;
+    gap: 8px !important;
+    z-index: 99999 !important;
+    box-sizing: border-box !important;
+    font-family: 'Inter', -apple-system, BlinkMacSystemFont, sans-serif !important;
+}
+
+#ultra-erp-topbar .erp-topbar-left,
+#ultra-erp-topbar .erp-topbar-right {
+    display: flex !important;
+    flex-direction: row !important;
+    align-items: center !important;
+    gap: 6px !important;
+    white-space: nowrap !important;
+    overflow-x: auto !important;
+    scrollbar-width: none !important;
+}
+#ultra-erp-topbar .erp-topbar-left::-webkit-scrollbar,
+#ultra-erp-topbar .erp-topbar-right::-webkit-scrollbar {
+    display: none !important;
+}
+
+#ultra-erp-topbar .erp-brand {
+    display: inline-flex !important;
+    align-items: center !important;
+    gap: 5px !important;
+    font-size: 13px !important;
+    font-weight: 800 !important;
+    color: #fafafa !important;
+    text-decoration: none !important;
+    letter-spacing: 0.03em !important;
+    margin-right: 4px !important;
+    flex-shrink: 0 !important;
+}
+
+#ultra-erp-topbar .erp-badge {
+    background: #ff6900 !important;
+    color: #ffffff !important;
+    font-size: 10px !important;
+    font-weight: 800 !important;
+    padding: 2px 5px !important;
+    border-radius: 4px !important;
+}
+
+#ultra-erp-topbar .erp-nav {
+    display: flex !important;
+    flex-direction: row !important;
+    align-items: center !important;
+    gap: 4px !important;
+}
+
+#ultra-erp-topbar .erp-nav-link {
+    display: inline-flex !important;
+    align-items: center !important;
+    padding: 5px 9px !important;
+    border-radius: 6px !important;
+    font-size: 12px !important;
+    font-weight: 600 !important;
+    color: #a1a1aa !important;
+    text-decoration: none !important;
+    border: 1px solid transparent !important;
+    transition: background 0.15s, color 0.15s, border-color 0.15s !important;
+    flex-shrink: 0 !important;
+}
+
+#ultra-erp-topbar .erp-nav-link:hover {
+    background: #1f2026 !important;
+    color: #fafafa !important;
+}
+
+#ultra-erp-topbar .erp-nav-link.active {
+    background: rgba(255, 105, 0, 0.15) !important;
+    color: #ff6900 !important;
+    border-color: rgba(255, 105, 0, 0.4) !important;
+    font-weight: 700 !important;
+}
+
+/* === МЯГКАЯ МАТОВАЯ СВЕТЛАЯ ТЕМА (БЕЗ ЗАСВЕТКИ И БЕЗ ЧЕРНЫХ БЛОКОВ) === */
+html[data-theme="light"],
+body.light-theme {
+    --bg-main: #e4e8f0 !important;
+    --bg-panel: #f1f4f9 !important;
+    --bg-elevated: #e9edf4 !important;
+    --bg-card: #f5f7fa !important;
+    --bg-input: #dde2ec !important;
+    --text-main: #18181b !important;
+    --text-muted: #4b5563 !important;
+    --border: #c5cddb !important;
+    background: #e4e8f0 !important;
+    color: #18181b !important;
+}
+
+html[data-theme="light"] #ultra-erp-topbar.erp-topbar {
+    background: #d8dee9 !important;
+    border-bottom: 1px solid #b8c2d4 !important;
+}
+
+html[data-theme="light"] #ultra-erp-topbar .erp-brand {
+    color: #0f172a !important;
+}
+
+html[data-theme="light"] #ultra-erp-topbar .erp-nav-link {
+    color: #334155 !important;
+}
+
+html[data-theme="light"] #ultra-erp-topbar .erp-nav-link:hover {
+    background: #cbd3e1 !important;
+    color: #0f172a !important;
+}
+
+html[data-theme="light"] #ultra-erp-topbar .erp-nav-link.active {
+    background: #ff6900 !important;
+    color: #ffffff !important;
+    border-color: #ff6900 !important;
+}
+
+/* Элементы кассы (карточки блюд, правая панель чека, поиск, категории) в мягкой светлой теме */
+html[data-theme="light"] .main,
+html[data-theme="light"] .catalog,
+html[data-theme="light"] .pos-left,
+html[data-theme="light"] .content-area {
+    background: #e4e8f0 !important;
+    color: #18181b !important;
+}
+
+html[data-theme="light"] .sidebar,
+html[data-theme="light"] .cart,
+html[data-theme="light"] .pos-right,
+html[data-theme="light"] .receipt-panel,
+html[data-theme="light"] .card,
+html[data-theme="light"] .item-card,
+html[data-theme="light"] .menu-card,
+html[data-theme="light"] .dish-card,
+html[data-theme="light"] .card-panel,
+html[data-theme="light"] .stat-card,
+html[data-theme="light"] .contour-card {
+    background: #f1f4f9 !important;
+    color: #18181b !important;
+    border-color: #c5cddb !important;
+    box-shadow: 0 2px 5px rgba(15, 23, 42, 0.05) !important;
+}
+
+html[data-theme="light"] .cat-btn,
+html[data-theme="light"] .tab-btn,
+html[data-theme="light"] .filter-btn {
+    background: #dde2ec !important;
+    color: #1e293b !important;
+    border-color: #bdc6d4 !important;
+}
+
+html[data-theme="light"] .cat-btn.active,
+html[data-theme="light"] .tab-btn.active {
+    background: #ff6900 !important;
+    color: #ffffff !important;
+    border-color: #ff6900 !important;
+}

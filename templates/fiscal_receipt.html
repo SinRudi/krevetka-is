@@ -1,0 +1,258 @@
+<!DOCTYPE html>
+<html lang="ru">
+<head>
+<meta charset="UTF-8">
+<title>Фискальный чек #{{ order.id }} (ФД №{{ fiscal.fd_number }})</title>
+<style>
+* { box-sizing: border-box; }
+body {
+    font-family: 'Courier New', Courier, monospace;
+    background: #0f172a;
+    color: #000;
+    margin: 0;
+    padding: 20px;
+    display: flex;
+    gap: 24px;
+    justify-content: center;
+    align-items: flex-start;
+}
+.receipt-paper {
+    width: 320px;
+    background: #ffffff;
+    color: #000000;
+    padding: 18px 14px;
+    box-shadow: 0 15px 40px rgba(0,0,0,0.6);
+    font-size: 12px;
+    line-height: 1.35;
+}
+.center { text-align: center; }
+.right { text-align: right; }
+.bold { font-weight: bold; }
+.title-brand { font-size: 18px; font-weight: 900; text-align: center; margin: 0 0 4px 0; letter-spacing: 1px; }
+.divider { border: none; border-top: 1px dashed #000; margin: 7px 0; }
+.divider-double { border: none; border-top: 2px solid #000; margin: 7px 0; }
+.row { display: flex; justify-content: space-between; align-items: baseline; gap: 6px; }
+.item-block { margin: 6px 0; }
+.item-title { font-weight: bold; font-size: 12px; }
+.item-meta { font-size: 10px; color: #222; display: flex; justify-content: space-between; }
+.total-block { font-size: 17px; font-weight: 900; margin: 6px 0; }
+.qr-wrap { text-align: center; margin: 10px 0 4px 0; }
+.fiscal-meta { font-size: 11px; line-height: 1.3; }
+
+/* Панель управления чеком справа (не печатается на принтере) */
+.control-panel {
+    width: 340px;
+    background: #1e293b;
+    color: #f8fafc;
+    font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif;
+    padding: 20px;
+    border-radius: 16px;
+    border: 1px solid rgba(255,255,255,0.1);
+    box-shadow: 0 10px 30px rgba(0,0,0,0.4);
+}
+.control-panel h3 { margin: 0 0 12px 0; color: #ff6b00; font-size: 17px; }
+.field { margin-bottom: 10px; }
+.field label { display: block; font-size: 12px; color: #94a3b8; margin-bottom: 4px; font-weight: 600; }
+.field input, .field select {
+    width: 100%; padding: 8px 10px; border-radius: 8px;
+    border: 1px solid rgba(255,255,255,0.15); background: #0f172a; color: #fff; font-size: 13px;
+}
+.btn-action {
+    width: 100%; padding: 12px; border: none; border-radius: 10px;
+    font-weight: 800; font-size: 14px; cursor: pointer; margin-bottom: 8px;
+    display: flex; align-items: center; justify-content: center; gap: 8px;
+    text-decoration: none;
+}
+.btn-print { background: linear-gradient(135deg, #ff6b00, #ff4500); color: #fff; }
+.btn-save { background: linear-gradient(135deg, #10b981, #059669); color: #fff; }
+.btn-sub { background: #334155; color: #e2e8f0; }
+
+@media print {
+    body { background: #fff !important; padding: 0 !important; display: block !important; }
+    .control-panel, #krevetka-ultra-dock { display: none !important; }
+    .receipt-paper { box-shadow: none !important; width: 100% !important; max-width: 300px !important; margin: 0 auto !important; padding: 4px !important; }
+}
+</style>
+</head>
+<body>
+
+<!-- ЛЕНТА ФИСКАЛЬНОГО ЧЕКА -->
+<div class="receipt-paper">
+    <div class="title-brand"> {{ brand_name }}</div>
+    <div class="center bold">{{ fiscal_cfg.org_name }}</div>
+    <div class="center">ИНН {{ fiscal_cfg.inn }}</div>
+    <div class="center">Адрес расчетов: {{ brand_city }}, {{ brand_address }}</div>
+    <div class="center">Место расчетов: Касса №1 • Тел: {{ brand_phone }}</div>
+    <hr class="divider">
+    <div class="center bold" style="font-size:14px;">КАССОВЫЙ ЧЕК</div>
+    <div class="row"><span>ПРИХОД</span><span>Заказ #{{ order.id }}</span></div>
+    <div class="row"><span>Смена №{{ order.shift_id or 1 }}</span><span>Кассир: {{ fiscal.cashier_name }}</span></div>
+    <div class="row"><span>Дата/Время:</span><span>{{ fiscal.fiscal_at }}</span></div>
+    <hr class="divider-double">
+
+    {% for item in items %}
+    <div class="item-block">
+        <div class="item-title">{{ loop.index }}. {{ item.name }}</div>
+        <div class="row">
+            <span>{{ item.qty }}.000 x {{ "%.2f"|format(item.price) }}</span>
+            <span class="bold">={{ "%.2f"|format(item.price * item.qty) }}</span>
+        </div>
+        <div class="item-meta">
+            <span>НДС: {{ fiscal_cfg.vat_label }}</span>
+            <span>ТОВАР / ПОЛНЫЙ РАСЧЕТ</span>
+        </div>
+    </div>
+    {% endfor %}
+
+    {% if order.delivery_price and order.delivery_price > 0 %}
+    <div class="item-block">
+        <div class="item-title">Доставка ({{ order.delivery_zone or brand_city }})</div>
+        <div class="row">
+            <span>1.000 x {{ "%.2f"|format(order.delivery_price) }}</span>
+            <span class="bold">={{ "%.2f"|format(order.delivery_price) }}</span>
+        </div>
+        <div class="item-meta">
+            <span>НДС: {{ fiscal_cfg.vat_label }}</span>
+            <span>УСЛУГА / ПОЛНЫЙ РАСЧЕТ</span>
+        </div>
+    </div>
+    {% endif %}
+
+    <hr class="divider-double">
+    <div class="row total-block">
+        <span>ИТОГ</span>
+        <span>={{ "%.2f"|format(order.total) }}</span>
+    </div>
+    <hr class="divider">
+
+    <div class="row bold">
+        <span>НАЛИЧНЫМИ</span>
+        <span>={{ "%.2f"|format(fiscal.cash_amount) }}</span>
+    </div>
+    <div class="row bold">
+        <span>БЕЗНАЛИЧНЫМИ</span>
+        <span>={{ "%.2f"|format(fiscal.card_amount) }}</span>
+    </div>
+    {% if order.change_from and order.change_from > fiscal.cash_amount and fiscal.cash_amount > 0 %}
+    <div class="row">
+        <span>ПОЛУЧЕНО НАЛИЧНЫМИ</span>
+        <span>={{ "%.2f"|format(order.change_from) }}</span>
+    </div>
+    <div class="row">
+        <span>СДАЧА</span>
+        <span>={{ "%.2f"|format(order.change_from - fiscal.cash_amount) }}</span>
+    </div>
+    {% endif %}
+    <div class="row">
+        <span>СУММА БЕЗ НДС</span>
+        <span>={{ "%.2f"|format(order.total) }}</span>
+    </div>
+
+    <hr class="divider">
+    <div class="fiscal-meta">
+        <div class="row"><span>СНО:</span><span>{{ fiscal_cfg.sno }}</span></div>
+        <div class="row"><span>РН ККТ:</span><span>{{ fiscal_cfg.rn_kkt }}</span></div>
+        <div class="row"><span>ЗН ККТ:</span><span>{{ fiscal_cfg.zn_kkt }}</span></div>
+        <div class="row"><span>ФН №:</span><span>{{ fiscal_cfg.fn_num }}</span></div>
+        <div class="row bold"><span>ФД №: {{ fiscal.fd_number }}</span><span>ФПД: {{ fiscal.fpd }}</span></div>
+        <div class="center" style="margin-top:4px;">ОФД: {{ fiscal_cfg.ofd_name }}</div>
+        <div class="center">Сайт ФНС: www.nalog.gov.ru</div>
+    </div>
+
+    <div class="qr-wrap">
+        {{ qr_svg | safe }}
+        <div style="font-size:9px; color:#333; margin-top:2px;">{{ fiscal.qr_raw }}</div>
+    </div>
+
+    <hr class="divider">
+    <div class="center bold">Спасибо за покупку!</div>
+</div>
+
+<!-- ПАНЕЛЬ УПРАВЛЕНИЯ ФИСКАЛИЗАЦИЕЙ (СКРЫВАЕТСЯ ПРИ ПЕЧАТИ) -->
+<div class="control-panel">
+    <h3> Управление фискальным чеком</h3>
+    
+    <form method="post" action="/fiscal/{{ order.id }}/set_fiscal_status" style="margin-bottom:10px;">
+        {% if order.is_fiscal %}
+        <input type="hidden" name="is_fiscal" value="0">
+        <button type="submit" class="btn-action" style="background:#eab308; color:#000;">Контур: БЕЛАЯ КАССА (Перевести в Управленческий)</button>
+        {% else %}
+        <input type="hidden" name="is_fiscal" value="1">
+        <button type="submit" class="btn-action" style="background:#0ea5e9; color:#fff;">Контур: УПРАВЛЕНЧЕСКИЙ НАЛ (Провести в Белую по ККТ)</button>
+        {% endif %}
+    </form>
+    
+    <button class="btn-action btn-print" onclick="markOrderFiscalAndPrint({{ order.id }})"> ПЕЧАТЬ ФИСКАЛЬНОГО ЧЕКА</button>
+    <a href="/receipt/{{ order.id }}" class="btn-action btn-sub"> Обычный товарный чек (Пречек)</a>
+    <a href="/" class="btn-action btn-sub">← Вернуться в Кассу</a>
+
+    <hr style="border:none; border-top:1px solid rgba(255,255,255,0.1); margin:16px 0;">
+    <h3> Разбивка оплаты в чеке</h3>
+    <form method="post" action="/fiscal/{{ order.id }}/update_payment">
+        <div class="field">
+            <label>Способ расчёта</label>
+            <select name="payment_method" id="f-pay-method" onchange="onPayMethodChange()">
+                <option value="карта" {% if fiscal.pay_mode == 'карта' %}selected{% endif %}> 100% Безналичными (Карта)</option>
+                <option value="наличные" {% if fiscal.pay_mode == 'наличные' %}selected{% endif %}> 100% Наличными</option>
+                <option value="микс" {% if fiscal.pay_mode == 'микс' %}selected{% endif %}> Смешанная оплата (Микс)</option>
+            </select>
+        </div>
+        <div id="mix-box" style="display:{% if fiscal.pay_mode == 'микс' %}block{% else %}none{% endif %};">
+            <div class="field">
+                <label>Сумма НАЛИЧНЫМИ (₽)</label>
+                <input type="number" name="cash_amount" id="f-cash" value="{{ fiscal.cash_amount }}" min="0" max="{{ order.total }}" oninput="syncMixCard()">
+            </div>
+            <div class="field">
+                <label>Сумма БЕЗНАЛИЧНЫМИ (₽)</label>
+                <input type="number" name="card_amount" id="f-card" value="{{ fiscal.card_amount }}" readonly>
+            </div>
+        </div>
+        <button type="submit" class="btn-action btn-save"> Обновить оплату в чеке</button>
+    </form>
+
+    <hr style="border:none; border-top:1px solid rgba(255,255,255,0.1); margin:16px 0;">
+    <h3> Реквизиты ККТ (54-ФЗ)</h3>
+    <form method="post" action="/fiscal/settings/save">
+        <input type="hidden" name="order_id" value="{{ order.id }}">
+        <div class="field"><label>Организация / ИП</label><input name="fiscal_org" value="{{ fiscal_cfg.org_name }}"></div>
+        <div class="field"><label>ИНН</label><input name="fiscal_inn" value="{{ fiscal_cfg.inn }}"></div>
+        <div class="field">
+            <label>Система налогообложения (СНО)</label>
+            <select name="fiscal_sno">
+                <option value="ПАТЕНТ" {% if fiscal_cfg.sno == 'ПАТЕНТ' %}selected{% endif %}>ПАТЕНТ (ПСН)</option>
+                <option value="УСН ДОХОДЫ" {% if fiscal_cfg.sno == 'УСН ДОХОДЫ' %}selected{% endif %}>УСН ДОХОДЫ</option>
+                <option value="УСН ДОХОД-РАСХОД" {% if fiscal_cfg.sno == 'УСН ДОХОД-РАСХОД' %}selected{% endif %}>УСН ДОХОД-РАСХОД</option>
+            </select>
+        </div>
+        <div class="field"><label>РН ККТ (16 цифр)</label><input name="fiscal_rn" value="{{ fiscal_cfg.rn_kkt }}"></div>
+        <div class="field"><label>ФН № (16 цифр)</label><input name="fiscal_fn" value="{{ fiscal_cfg.fn_num }}"></div>
+        <div class="field"><label>ОФД</label><input name="fiscal_ofd" value="{{ fiscal_cfg.ofd_name }}"></div>
+        <button type="submit" class="btn-action btn-sub"> Сохранить реквизиты ККТ</button>
+    </form>
+</div>
+
+<script>
+const orderTotal = {{ order.total }};
+function onPayMethodChange() {
+    const val = document.getElementById('f-pay-method').value;
+    document.getElementById('mix-box').style.display = (val === 'микс') ? 'block' : 'none';
+}
+function syncMixCard() {
+    let cash = parseInt(document.getElementById('f-cash').value) || 0;
+    if (cash > orderTotal) cash = orderTotal;
+    document.getElementById('f-card').value = Math.max(0, orderTotal - cash);
+}
+
+function markOrderFiscalAndPrint(orderId) {
+    fetch('/api/accounting/set_fiscal/' + orderId, {
+        method: 'POST',
+        headers: {'Content-Type': 'application/json'},
+        body: JSON.stringify({is_fiscal: 1})
+    }).then(() => {
+        window.print();
+        setTimeout(() => window.location.reload(), 500);
+    });
+}
+</script>
+</body>
+</html>

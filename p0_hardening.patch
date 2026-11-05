@@ -1,0 +1,1946 @@
+diff -ruN a/app.py b/app.py
+--- a/app.py	2026-10-31 23:50:55.599960113 +0300
++++ b/app.py	2026-11-01 00:54:41.419912789 +0300
+@@ -1,4 +1,4 @@
+-from flask import Flask, render_template, request, jsonify, g, session, redirect, url_for, flash, make_response, send_from_directory, send_file, abort
++from flask import Flask, render_template, request, jsonify, g, session, redirect, url_for, flash, make_response, send_from_directory, send_file, abort, after_this_request
+ from datetime import datetime, timedelta
+ from functools import wraps
+ from werkzeug.security import generate_password_hash, check_password_hash
+@@ -9,12 +9,48 @@
+ import io
+ import openpyxl
+ import time
++import hmac
++import hashlib
++import secrets
++import threading
++import tempfile
++from collections import defaultdict, deque
+ 
+-app = Flask(__name__)
+-app.secret_key = os.environ.get('SUSHI_SECRET', 'super-secret-key-change-me')
+-DB_PATH = os.path.join(os.path.dirname(os.path.abspath(__file__)), 'sushi.db')
+-UPLOAD_FOLDER = os.path.join(os.path.dirname(os.path.abspath(__file__)), 'static', 'uploads')
++BASE_DIR = os.path.dirname(os.path.abspath(__file__))
++DB_PATH = os.path.join(BASE_DIR, 'sushi.db')
++UPLOAD_FOLDER = os.path.join(BASE_DIR, 'static', 'uploads')
+ ALLOWED_EXTENSIONS = {'png', 'jpg', 'jpeg', 'webp', 'gif'}
++
++def _load_secret():
++    env = os.environ.get('SUSHI_SECRET', '').strip()
++    if env:
++        return env
++    path = os.path.join(BASE_DIR, '.sushi_secret')
++    try:
++        with open(path, 'r', encoding='utf-8') as f:
++            value = f.read().strip()
++        if len(value) >= 32:
++            return value
++    except FileNotFoundError:
++        pass
++    value = secrets.token_hex(32)
++    with open(path, 'w', encoding='utf-8') as f:
++        f.write(value)
++    try:
++        os.chmod(path, 0o600)
++    except OSError:
++        pass
++    return value
++
++app = Flask(__name__)
++app.secret_key = _load_secret()
++app.config.update(
++    SESSION_COOKIE_HTTPONLY=True,
++    SESSION_COOKIE_SAMESITE='Lax',
++    SESSION_COOKIE_SECURE=os.environ.get('SUSHI_HTTPS', '0') == '1',
++    PERMANENT_SESSION_LIFETIME=timedelta(hours=12),
++    MAX_CONTENT_LENGTH=8 * 1024 * 1024,
++)
+ app.config['UPLOAD_FOLDER'] = UPLOAD_FOLDER
+ os.makedirs(UPLOAD_FOLDER, exist_ok=True)
+ 
+@@ -23,6 +59,280 @@
+ def allowed_file(filename):
+     return '.' in filename and filename.rsplit('.', 1)[1].lower() in ALLOWED_EXTENSIONS
+ 
++def clean_text(value, max_len=500):
++    """Strip tags/control bytes and cap length for values that go to HTML/JS."""
++    if value is None:
++        return ''
++    value = str(value).replace('\x00', '').strip()
++    value = re.sub(r'<[^>]*>', '', value)
++    return value[:max_len]
++
++PHONE_RE = re.compile(r'^\+?[0-9()\-\s]{7,25}$')
++PAYMENT_METHODS = {'не указан', 'наличные', 'карта', 'перевод', 'микс'}
++DELIVERY_TYPES = {'доставка', 'самовывоз'}
++USER_ROLES = {'admin', 'cashier', 'kitchen', 'courier'}
++
++_rate_hits = defaultdict(deque)
++_rate_lock = threading.Lock()
++
++def rate_limit(key, limit, window_sec):
++    now = time.time()
++    with _rate_lock:
++        q = _rate_hits[key]
++        while q and q[0] < now - window_sec:
++            q.popleft()
++        if len(q) >= limit:
++            return False
++        q.append(now)
++        return True
++
++def order_token(order_id):
++    key = str(app.secret_key).encode('utf-8')
++    return hmac.new(key, f'order:{order_id}'.encode('utf-8'), hashlib.sha256).hexdigest()
++
++def order_token_valid(order_id, token):
++    return bool(token) and hmac.compare_digest(order_token(order_id), str(token))
++
++def password_is_default(user):
++    try:
++        return check_password_hash(user['password_hash'], user['username'])
++    except Exception:
++        return False
++
++def log_stock(db, ingredient_id, name, change, op_type, reason, cost_impact=0, username=None):
++    db.execute(
++        "INSERT INTO stock_logs (created_at, ingredient_id, ing_name, change_amount, op_type, reason, cost_impact, username) VALUES (?,?,?,?,?,?,?,?)",
++        (datetime.now().strftime('%Y-%m-%d %H:%M'), ingredient_id, name, change, op_type,
++         clean_text(reason, 300), round(float(cost_impact or 0), 2),
++         username or session.get('username', 'система'))
++    )
++
++def ensure_client(db, phone, now_str):
++    if not phone:
++        return None
++    row = db.execute("SELECT * FROM clients WHERE phone=?", (phone,)).fetchone()
++    if row:
++        return row
++    db.execute(
++        "INSERT INTO clients (phone, total_spent, orders_count, last_order_at, level, bonuses) VALUES (?,0,0,?,'bronze',0)",
++        (phone, now_str)
++    )
++    return db.execute("SELECT * FROM clients WHERE phone=?", (phone,)).fetchone()
++
++def credit_client(db, order):
++    if not order['phone'] or order['client_credited']:
++        return
++    client = ensure_client(db, order['phone'], datetime.now().strftime('%Y-%m-%d %H:%M:%S'))
++    new_spent = (client['total_spent'] or 0) + (order['total'] or 0)
++    new_level = 'gold' if new_spent >= 30000 else ('silver' if new_spent >= 10000 else 'bronze')
++    rate = 0.10 if new_level == 'gold' else (0.07 if new_level == 'silver' else 0.05)
++    earned = int((order['total'] or 0) * rate)
++    db.execute(
++        "UPDATE clients SET total_spent=?, orders_count=COALESCE(orders_count,0)+1, last_order_at=?, level=?, bonuses=COALESCE(bonuses,0)+? WHERE phone=?",
++        (new_spent, datetime.now().strftime('%Y-%m-%d %H:%M:%S'), new_level, earned, order['phone'])
++    )
++    db.execute("UPDATE orders SET earned_bonus=?, client_credited=1 WHERE id=?", (earned, order['id']))
++
++def uncredit_client(db, order):
++    if not order['phone'] or not order['client_credited']:
++        return
++    db.execute(
++        "UPDATE clients SET total_spent=MAX(0, COALESCE(total_spent,0)-?), orders_count=MAX(0, COALESCE(orders_count,0)-1), bonuses=MAX(0, COALESCE(bonuses,0)-?) WHERE phone=?",
++        (order['total'] or 0, order['earned_bonus'] or 0, order['phone'])
++    )
++    db.execute("UPDATE orders SET client_credited=0 WHERE id=?", (order['id'],))
++
++def restore_ingredients(db, order_id, reason):
++    """Return ingredients to stock using the same waste factor as deduction."""
++    for item in db.execute("SELECT menu_id, qty, name FROM order_items WHERE order_id=?", (order_id,)).fetchall():
++        if not item['menu_id']:
++            continue
++        for r in db.execute('''
++            SELECT r.ingredient_id, r.amount, ing.name, ing.cost_price, COALESCE(ing.waste_pct, 0) AS waste_pct
++            FROM recipes r JOIN ingredients ing ON r.ingredient_id = ing.id
++            WHERE r.menu_id=?
++        ''', (item['menu_id'],)).fetchall():
++            waste = min(95.0, max(0.0, float(r['waste_pct'] or 0)))
++            factor = 1.0 / (1.0 - waste / 100.0) if waste > 0 else 1.0
++            amount = float(r['amount']) * int(item['qty']) * factor
++            db.execute("UPDATE ingredients SET stock = ROUND(stock + ?, 4) WHERE id=?", (amount, r['ingredient_id']))
++            log_stock(db, r['ingredient_id'], r['name'], amount, 'возврат',
++                      f"{reason}: {item['name']} x{item['qty']}", amount * float(r['cost_price'] or 0))
++
++IMAGE_EXT_OK = {
++    'png': lambda h: h.startswith(b'\x89PNG\r\n\x1a\n'),
++    'jpg': lambda h: h.startswith(b'\xff\xd8\xff'),
++    'jpeg': lambda h: h.startswith(b'\xff\xd8\xff'),
++    'gif': lambda h: h.startswith((b'GIF87a', b'GIF89a')),
++    'webp': lambda h: h[:4] == b'RIFF' and h[8:12] == b'WEBP',
++}
++
++def save_upload(file):
++    """Save an image only if the bytes really look like that image type."""
++    if not file or not file.filename or not allowed_file(file.filename):
++        return ''
++    ext = file.filename.rsplit('.', 1)[1].lower()
++    check = IMAGE_EXT_OK.get(ext)
++    if not check:
++        return ''
++    head = file.stream.read(16)
++    file.stream.seek(0)
++    if not check(head):
++        return ''
++    filename = uuid.uuid4().hex + '.' + ('jpg' if ext == 'jpeg' else ext)
++    file.save(os.path.join(app.config['UPLOAD_FOLDER'], filename))
++    return filename
++
++def html_safe(value):
++    if value is None:
++        return ''
++    return str(value).replace('&', '&amp;').replace('<', '&lt;').replace('>', '&gt;')
++
++def safe_order_row(row):
++    data = dict(row)
++    for key in ('address', 'phone', 'comment', 'courier_name', 'payment_method',
++                'delivery_type', 'delivery_zone', 'scheduled_time', 'promo_code',
++                'status', 'source', 'cashier_name'):
++        if key in data and data[key] is not None:
++            data[key] = html_safe(data[key])
++    return data
++
++def safe_items(rows):
++    items = []
++    for row in rows:
++        item = dict(row)
++        for key in ('name', 'modifiers'):
++            if item.get(key) is not None:
++                item[key] = html_safe(item[key])
++        items.append(item)
++    return items
++
++def resolve_zone_price(db, zone_name, delivery_type, client_level='bronze'):
++    if delivery_type != 'доставка' or client_level == 'gold':
++        return 0
++    zone_name = clean_text(zone_name or '', 100)
++    if zone_name:
++        zone = db.execute("SELECT price FROM zones WHERE name=?", (zone_name,)).fetchone()
++        if zone:
++            return max(0, int(zone['price'] or 0))
++    return parse_zone_price(zone_name, delivery_type, client_level)
++
++STATUS_FLOW = {
++    'new': {'cooking', 'cancelled'},
++    'cooking': {'ready', 'cancelled'},
++    'ready': {'delivering', 'done', 'cancelled'},
++    'delivering': {'done', 'cancelled'},
++    'done': set(),
++    'cancelled': set(),
++}
++
++def can_transition(role, old, new):
++    if new not in STATUS_FLOW.get(old, set()):
++        return False
++    if role in ('admin', 'cashier'):
++        return True
++    if role == 'kitchen':
++        return (old, new) in {('new', 'cooking'), ('cooking', 'ready')}
++    if role == 'courier':
++        return (old, new) in {('ready', 'delivering'), ('delivering', 'done')}
++    return False
++
++def compute_shift_totals(db, shift, end=None):
++    end = end or shift['closed_at'] or datetime.now().strftime('%Y-%m-%d %H:%M:%S')
++    return db.execute('''
++        SELECT COUNT(*) cnt, COALESCE(SUM(total),0) rev,
++               COALESCE(SUM(CASE WHEN payment_cash > 0 OR payment_card > 0 THEN payment_cash
++                                 WHEN payment_method='наличные' THEN total ELSE 0 END),0) cash,
++               COALESCE(SUM(CASE WHEN payment_cash > 0 OR payment_card > 0 THEN payment_card
++                                 WHEN payment_method IN ('карта','перевод') THEN total ELSE 0 END),0) card
++        FROM orders
++        WHERE status != 'cancelled'
++          AND (shift_id=? OR (shift_id IS NULL AND created_at >= ? AND created_at <= ?))
++    ''', (shift['id'], shift['opened_at'], end)).fetchone()
++
++def recalc_closed_shifts(db):
++    for shift in db.execute("SELECT * FROM shifts WHERE status='closed'").fetchall():
++        row = compute_shift_totals(db, shift, shift['closed_at'])
++        db.execute("UPDATE shifts SET total_orders=?, total_revenue=?, total_cash=?, total_card=? WHERE id=?",
++                   (row['cnt'], row['rev'], row['cash'], row['card'], shift['id']))
++
++def recalc_clients(db):
++    """Rebuild orders_count/total_spent/level from orders (fixes historical drift)."""
++    rows = db.execute('''
++        SELECT phone, COUNT(*) AS cnt, COALESCE(SUM(total), 0) AS spent
++        FROM orders
++        WHERE status != 'cancelled' AND phone IS NOT NULL AND phone != ''
++        GROUP BY phone
++    ''').fetchall()
++    for row in rows:
++        spent = row['spent'] or 0
++        level = 'gold' if spent >= 30000 else ('silver' if spent >= 10000 else 'bronze')
++        db.execute("UPDATE clients SET orders_count=?, total_spent=?, level=? WHERE phone=?",
++                   (row['cnt'], spent, level, row['phone']))
++
++def migrate_db(db):
++    def columns(table):
++        return {r[1] for r in db.execute(f"PRAGMA table_info({table})").fetchall()}
++    additions = [
++        ('ingredients', 'waste_pct', 'waste_pct REAL DEFAULT 0'),
++        ('ingredients', 'prep_yield', 'prep_yield REAL DEFAULT 0'),
++        ('zones', 'lat', 'lat REAL DEFAULT 0'),
++        ('zones', 'lng', 'lng REAL DEFAULT 0'),
++        ('zones', 'radius', 'radius INTEGER DEFAULT 1000'),
++        ('orders', 'client_request_id', 'client_request_id TEXT'),
++        ('orders', 'client_credited', 'client_credited INTEGER DEFAULT 0'),
++        ('orders', 'earned_bonus', 'earned_bonus INTEGER DEFAULT 0'),
++        ('orders', 'bonus_refunded', 'bonus_refunded INTEGER DEFAULT 0'),
++        ('shifts', 'cash_ops', 'cash_ops INTEGER DEFAULT 0'),
++    ]
++    for table, col, ddl in additions:
++        if col not in columns(table):
++            db.execute(f"ALTER TABLE {table} ADD COLUMN {ddl}")
++    db.executescript('''
++        CREATE TABLE IF NOT EXISTS prep_recipes (
++            prep_id INTEGER,
++            raw_id INTEGER,
++            amount REAL NOT NULL,
++            PRIMARY KEY (prep_id, raw_id),
++            FOREIGN KEY(prep_id) REFERENCES ingredients(id) ON DELETE CASCADE,
++            FOREIGN KEY(raw_id) REFERENCES ingredients(id) ON DELETE CASCADE
++        );
++        CREATE TABLE IF NOT EXISTS order_status_history (
++            id INTEGER PRIMARY KEY AUTOINCREMENT,
++            order_id INTEGER NOT NULL,
++            old_status TEXT,
++            new_status TEXT NOT NULL,
++            changed_at TEXT NOT NULL,
++            changed_by INTEGER,
++            comment TEXT DEFAULT '',
++            FOREIGN KEY(order_id) REFERENCES orders(id) ON DELETE CASCADE
++        );
++    ''')
++    for sql in [
++        'CREATE INDEX IF NOT EXISTS idx_orders_created_at ON orders(created_at)',
++        'CREATE INDEX IF NOT EXISTS idx_orders_status ON orders(status)',
++        'CREATE INDEX IF NOT EXISTS idx_orders_shift ON orders(shift_id)',
++        'CREATE INDEX IF NOT EXISTS idx_orders_phone ON orders(phone)',
++        'CREATE INDEX IF NOT EXISTS idx_order_items_order ON order_items(order_id)',
++        'CREATE INDEX IF NOT EXISTS idx_stock_logs_ing ON stock_logs(ingredient_id, created_at)',
++        'CREATE INDEX IF NOT EXISTS idx_status_history_order ON order_status_history(order_id)',
++        'CREATE UNIQUE INDEX IF NOT EXISTS ux_orders_request ON orders(client_request_id) WHERE client_request_id IS NOT NULL',
++    ]:
++        db.execute(sql)
++    try:
++        db.execute("CREATE UNIQUE INDEX IF NOT EXISTS ux_shifts_one_open ON shifts(status) WHERE status='open'")
++    except sqlite3.IntegrityError:
++        pass
++    version = db.execute("PRAGMA user_version").fetchone()[0]
++    if version < 1:
++        # Legacy versions credited bonuses at order creation; remember that.
++        db.execute("UPDATE orders SET client_credited=1 WHERE status!='cancelled' AND phone IS NOT NULL AND phone!='' AND client_credited=0")
++    if version < 2:
++        recalc_clients(db)
++    db.execute("PRAGMA user_version=2")
++    recalc_closed_shifts(db)
++    db.commit()
++
+ def get_db():
+     if 'db' not in g:
+         g.db = sqlite3.connect(DB_PATH, timeout=10)
+@@ -38,6 +348,54 @@
+     if db is not None:
+         db.close()
+ 
++def get_csrf_token():
++    token = session.get('_csrf')
++    if not token:
++        token = secrets.token_urlsafe(32)
++        session['_csrf'] = token
++    return token
++
++app.jinja_env.globals['csrf_token'] = get_csrf_token
++app.jinja_env.globals['order_token'] = order_token
++
++@app.before_request
++def security_before_request():
++    if request.endpoint == 'static':
++        return
++    if 'user_id' in session:
++        user = get_db().execute("SELECT id, username, role FROM users WHERE id=?", (session['user_id'],)).fetchone()
++        if not user:
++            session.clear()
++        else:
++            g.user = user
++            session['role'] = user['role']
++            session['username'] = user['username']
++    if request.method in ('POST', 'PUT', 'PATCH', 'DELETE'):
++        token = request.headers.get('X-CSRF-Token') or request.form.get('csrf_token')
++        if not token:
++            data = request.get_json(silent=True) or {}
++            token = data.get('csrf_token')
++        if not token or not hmac.compare_digest(str(token), str(session.get('_csrf', ''))):
++            return jsonify({'error': 'CSRF token missing or invalid'}), 400
++    if session.get('must_change_password') and request.endpoint not in ('change_password', 'logout', 'static'):
++        return redirect(url_for('change_password'))
++
++@app.after_request
++def security_headers(response):
++    response.headers.setdefault('X-Content-Type-Options', 'nosniff')
++    response.headers.setdefault('X-Frame-Options', 'SAMEORIGIN')
++    response.headers.setdefault('Referrer-Policy', 'same-origin')
++    response.headers.setdefault(
++        'Content-Security-Policy',
++        "default-src 'self'; script-src 'self' 'unsafe-inline' https://unpkg.com; "
++        "style-src 'self' 'unsafe-inline' https://unpkg.com; "
++        "img-src 'self' data: https://*.tile.openstreetmap.org https://unpkg.com; "
++        "connect-src 'self'; font-src 'self' data:; frame-ancestors 'self'; base-uri 'self'; form-action 'self'"
++    )
++    if app.config.get('SESSION_COOKIE_SECURE'):
++        response.headers.setdefault('Strict-Transport-Security', 'max-age=31536000; includeSubDomains')
++    return response
++
+ @app.route('/manifest.json')
+ def manifest(): return send_from_directory(os.path.dirname(os.path.abspath(__file__)), 'manifest.json')
+ @app.route('/chat_manifest.json')
+@@ -63,13 +421,17 @@
+         t_start = datetime.strptime(b['work_start'], "%H:%M").time()
+         t_end = datetime.strptime(b['work_end'], "%H:%M").time()
+         now = datetime.now().time()
+-        return t_start <= now <= t_end
++        if t_start <= t_end:
++            return t_start <= now <= t_end
++        return now >= t_start or now <= t_end
+     except Exception:
+         return True
+ 
+ def init_db():
+-    db = sqlite3.connect(DB_PATH)
++    db = sqlite3.connect(DB_PATH, timeout=10)
++    db.row_factory = sqlite3.Row
+     db.execute("PRAGMA journal_mode = WAL")
++    db.execute("PRAGMA busy_timeout = 5000")
+     db.executescript('''
+     CREATE TABLE IF NOT EXISTS settings (key TEXT PRIMARY KEY, value TEXT);
+     CREATE TABLE IF NOT EXISTS banners (id INTEGER PRIMARY KEY AUTOINCREMENT, image TEXT NOT NULL, title TEXT);
+@@ -102,12 +464,12 @@
+         total_revenue INTEGER DEFAULT 0, status TEXT NOT NULL DEFAULT 'open', total_cash INTEGER DEFAULT 0, total_card INTEGER DEFAULT 0
+     );
+     CREATE TABLE IF NOT EXISTS clients (id INTEGER PRIMARY KEY AUTOINCREMENT, phone TEXT UNIQUE NOT NULL, name TEXT, bonuses INTEGER DEFAULT 0, total_spent INTEGER DEFAULT 0, orders_count INTEGER DEFAULT 0, last_order_at TEXT, level TEXT DEFAULT 'bronze');
+-    CREATE TABLE IF NOT EXISTS zones (id INTEGER PRIMARY KEY AUTOINCREMENT, name TEXT NOT NULL, price INTEGER NOT NULL, polygon_data TEXT DEFAULT '');
++    CREATE TABLE IF NOT EXISTS zones (id INTEGER PRIMARY KEY AUTOINCREMENT, name TEXT NOT NULL, price INTEGER NOT NULL, polygon_data TEXT DEFAULT '', lat REAL DEFAULT 0, lng REAL DEFAULT 0, radius INTEGER DEFAULT 1000);
+     CREATE TABLE IF NOT EXISTS cash_operations (
+         id INTEGER PRIMARY KEY AUTOINCREMENT, shift_id INTEGER, op_type TEXT, amount INTEGER, comment TEXT, created_at TEXT, username TEXT
+     );
+     CREATE TABLE IF NOT EXISTS promocodes (id INTEGER PRIMARY KEY AUTOINCREMENT, code TEXT UNIQUE NOT NULL, discount_type TEXT NOT NULL DEFAULT 'percent', discount_value INTEGER NOT NULL, is_active INTEGER DEFAULT 1);
+-    CREATE TABLE IF NOT EXISTS ingredients (id INTEGER PRIMARY KEY AUTOINCREMENT, name TEXT NOT NULL, stock REAL DEFAULT 0, unit TEXT NOT NULL, cost_price REAL DEFAULT 0, is_prep INTEGER DEFAULT 0);
++    CREATE TABLE IF NOT EXISTS ingredients (id INTEGER PRIMARY KEY AUTOINCREMENT, name TEXT NOT NULL, stock REAL DEFAULT 0, unit TEXT NOT NULL, cost_price REAL DEFAULT 0, is_prep INTEGER DEFAULT 0, waste_pct REAL DEFAULT 0, prep_yield REAL DEFAULT 0);
+     CREATE TABLE IF NOT EXISTS recipes (menu_id INTEGER, ingredient_id INTEGER, amount REAL NOT NULL, PRIMARY KEY (menu_id, ingredient_id), FOREIGN KEY(menu_id) REFERENCES menu(id) ON DELETE CASCADE, FOREIGN KEY(ingredient_id) REFERENCES ingredients(id) ON DELETE CASCADE);
+     CREATE TABLE IF NOT EXISTS stock_logs (
+         id INTEGER PRIMARY KEY AUTOINCREMENT, created_at TEXT NOT NULL, ingredient_id INTEGER,
+@@ -126,12 +488,29 @@
+         db.execute("INSERT INTO settings (key, value) VALUES ('shop_status', 'auto')")
+     if db.execute("SELECT COUNT(*) FROM users").fetchone()[0] == 0:
+         now = datetime.now().strftime("%Y-%m-%d %H:%M:%S")
+-        db.executemany("INSERT INTO users (username, password_hash, role, created_at) VALUES (?,?,?,?)", [
+-            ("admin", generate_password_hash("admin"), "admin", now), ("cashier", generate_password_hash("cashier"), "cashier", now),
+-            ("kitchen", generate_password_hash("kitchen"), "kitchen", now), ("courier", generate_password_hash("courier"), "courier", now),
+-        ])
++        admin_password = os.environ.get('SUSHI_ADMIN_PASSWORD', '').strip()
++        generated = False
++        if not admin_password:
++            admin_password = secrets.token_urlsafe(18)
++            generated = True
++        db.execute("INSERT INTO users (username, password_hash, role, created_at) VALUES (?,?,?,?)",
++                   ('admin', generate_password_hash(admin_password), 'admin', now))
++        if generated:
++            path = os.path.join(BASE_DIR, 'initial_admin_password.txt')
++            with open(path, 'w', encoding='utf-8') as f:
++                f.write(admin_password + '\n')
++            try:
++                os.chmod(path, 0o600)
++            except OSError:
++                pass
++            print('=' * 60)
++            print('Создан администратор admin. Одноразовый пароль:')
++            print(admin_password)
++            print('Он сохранён в initial_admin_password.txt (права 600).')
++            print('=' * 60)
+     if db.execute("SELECT COUNT(*) FROM promocodes").fetchone()[0] == 0:
+         db.execute("INSERT INTO promocodes (code, discount_type, discount_value) VALUES (?,?,?)", ("SUSHI10", "percent", 10))
++    migrate_db(db)
+     db.commit()
+     db.close()
+ 
+@@ -139,8 +518,14 @@
+     def decorator(f):
+         @wraps(f)
+         def wrapper(*args, **kwargs):
+-            if 'user_id' not in session: return redirect(url_for('login'))
+-            if roles and session.get('role') not in roles: return "Доступ запрещён", 403
++            if not getattr(g, 'user', None):
++                if request.path.startswith('/api/'):
++                    return jsonify({'error': 'Требуется авторизация'}), 401
++                return redirect(url_for('login'))
++            if roles and g.user['role'] not in roles:
++                if request.path.startswith('/api/'):
++                    return jsonify({'error': 'Доступ запрещён'}), 403
++                return "Доступ запрещён", 403
+             return f(*args, **kwargs)
+         return wrapper
+     return decorator
+@@ -161,16 +546,27 @@
+ 
+ def validate_and_prepare_items(raw_items, allow_stop_list=False):
+     db = get_db()
++    if not isinstance(raw_items, list) or not raw_items or len(raw_items) > 50:
++        return None, "Некорректный состав заказа"
+     validated = []
++    total_qty = 0
+     for i in raw_items:
+-        menu_id = i.get('id')
+-        qty = max(1, int(i.get('qty', 1)))
++        if not isinstance(i, dict):
++            return None, "Некорректная позиция заказа"
++        try:
++            menu_id = int(i.get('id'))
++            qty = int(i.get('qty', 1))
++        except (TypeError, ValueError):
++            return None, "Некорректное блюдо или количество"
++        if qty < 1 or qty > 50:
++            return None, "Количество одной позиции должно быть от 1 до 50"
++        total_qty += qty
+         row = db.execute("SELECT id, name, price, available, stop_list, modifiers FROM menu WHERE id=?", (menu_id,)).fetchone()
+         if not row or not row['available']:
+-            return None, f"Блюдо '{i.get('name', 'Неизвестно')}' недоступно"
++            return None, "Блюдо недоступно"
+         if row['stop_list'] and not allow_stop_list:
+             return None, f"Блюдо '{row['name']}' в стоп-листе"
+-        mods = str(i.get('mods', '')).strip()
++        mods = clean_text(i.get('mods', ''), 300)
+         extra = parse_mods_extra_price(mods, row['modifiers'] or '')
+         validated.append({
+             "id": row['id'],
+@@ -179,9 +575,11 @@
+             "qty": qty,
+             "mods": mods
+         })
++    if total_qty > 200:
++        return None, "Слишком много позиций в заказе"
+     return validated, None
+ 
+-def deduct_ingredients(items):
++def deduct_ingredients(items, reason='Продажа'):
+     db = get_db()
+     total_cost = 0
+     deductions = {}
+@@ -207,7 +605,9 @@
+ 
+     for ing_id, info in deductions.items():
+         db.execute("UPDATE ingredients SET stock = ROUND(stock - ?, 4) WHERE id=?", (info["needed"], ing_id))
+-        total_cost += info["cost_price"] * info["needed"]
++        cost_impact = info["cost_price"] * info["needed"]
++        total_cost += cost_impact
++        log_stock(db, ing_id, info['name'], -info['needed'], 'продажа', reason, -cost_impact)
+ 
+     return None, total_cost
+ 
+@@ -293,13 +693,51 @@
+ @app.route('/login', methods=['GET', 'POST'])
+ def login():
+     if request.method == 'POST':
+-        user = get_db().execute("SELECT * FROM users WHERE username=?", (request.form.get('username', '').strip(),)).fetchone()
+-        if user and check_password_hash(user['password_hash'], request.form.get('password', '')):
+-            session.clear(); session['user_id'] = user['id']; session['username'] = user['username']; session['role'] = user['role']
++        if not rate_limit(f"login:{request.remote_addr}", 10, 300):
++            return "Слишком много попыток входа. Попробуйте через 5 минут.", 429
++        username = clean_text(request.form.get('username', ''), 80)
++        password = request.form.get('password', '')
++        user = get_db().execute("SELECT * FROM users WHERE username=?", (username,)).fetchone()
++        if user and check_password_hash(user['password_hash'], password):
++            session.clear()
++            session['user_id'] = user['id']
++            session['username'] = user['username']
++            session['role'] = user['role']
++            session['_csrf'] = secrets.token_urlsafe(32)
++            session.permanent = True
++            if password_is_default(user) or len(password) < 8:
++                session['must_change_password'] = True
++                return redirect(url_for('change_password'))
+             return redirect(url_for('index'))
+         flash('Неверный логин или пароль')
+     return render_template('login.html')
+ 
++
++@app.route('/account/password', methods=['GET', 'POST'])
++@login_required()
++def change_password():
++    if request.method == 'POST':
++        old_password = request.form.get('old_password', '')
++        new_password = request.form.get('new_password', '')
++        confirm = request.form.get('confirm_password', '')
++        user = get_db().execute("SELECT * FROM users WHERE id=?", (g.user['id'],)).fetchone()
++        if not check_password_hash(user['password_hash'], old_password):
++            flash('Текущий пароль неверен')
++        elif new_password != confirm:
++            flash('Новые пароли не совпадают')
++        elif len(new_password) < 10:
++            flash('Новый пароль должен быть не короче 10 символов')
++        elif new_password == user['username']:
++            flash('Пароль не должен совпадать с логином')
++        else:
++            db = get_db()
++            db.execute("UPDATE users SET password_hash=? WHERE id=?", (generate_password_hash(new_password), user['id']))
++            db.commit()
++            session.pop('must_change_password', None)
++            flash('Пароль изменён')
++            return redirect(url_for('index'))
++    return render_template('change_password.html')
++
+ @app.route('/logout')
+ def logout(): session.clear(); return redirect(url_for('login'))
+ 
+@@ -308,21 +746,57 @@
+ @app.route('/shift/open', methods=['POST'])
+ @login_required('admin', 'cashier')
+ def shift_open():
++    db = get_db()
+     if not get_open_shift():
+-        get_db().execute("INSERT INTO shifts (opened_at, opened_by, status) VALUES (?,?,?)", (datetime.now().strftime("%Y-%m-%d %H:%M:%S"), session['user_id'], 'open'))
+-        get_db().commit()
++        try:
++            cur = db.execute("INSERT INTO shifts (opened_at, opened_by, status) VALUES (?,?,?)",
++                             (datetime.now().strftime("%Y-%m-%d %H:%M:%S"), g.user['id'], 'open'))
++            shift_id = cur.lastrowid
++            last_closed = db.execute(
++                "SELECT closed_at FROM shifts WHERE status='closed' AND closed_at IS NOT NULL ORDER BY id DESC LIMIT 1"
++            ).fetchone()
++            cutoff = last_closed['closed_at'] if last_closed else (
++                datetime.now() - timedelta(hours=24)).strftime("%Y-%m-%d %H:%M:%S")
++            db.execute(
++                "UPDATE orders SET shift_id=? WHERE shift_id IS NULL AND status!='cancelled' AND created_at >= ?",
++                (shift_id, cutoff)
++            )
++            db.commit()
++        except sqlite3.IntegrityError:
++            db.rollback()
+     return redirect(url_for('index'))
+ 
+ @app.route('/shift/close', methods=['POST'])
+ @login_required('admin', 'cashier')
+ def shift_close():
+     shift = get_open_shift()
+-    if not shift: return redirect(url_for('index'))
++    if not shift:
++        return redirect(url_for('index'))
+     db = get_db()
+-    row = db.execute("SELECT COUNT(*) cnt, COALESCE(SUM(total),0) rev, COALESCE(SUM(payment_cash),0) cash, COALESCE(SUM(payment_card),0) card FROM orders WHERE shift_id=? AND status!='cancelled'", (shift['id'],)).fetchone()
+-    db.execute("UPDATE shifts SET closed_at=?, closed_by=?, status='closed', total_orders=?, total_revenue=?, total_cash=?, total_card=? WHERE id=?", (datetime.now().strftime("%Y-%m-%d %H:%M:%S"), session['user_id'], row['cnt'], row['rev'], row['cash'], row['card'], shift['id']))
++    row = compute_shift_totals(db, shift)
++    cash_delta = 0
++    try:
++        ops = db.execute('''
++            SELECT COALESCE(SUM(CASE WHEN op_type='float_in' THEN amount
++                                     WHEN op_type='collection' THEN -amount ELSE 0 END), 0) AS delta
++            FROM cash_operations WHERE shift_id=?
++        ''', (shift['id'],)).fetchone()
++        cash_delta = ops['delta'] or 0
++    except sqlite3.OperationalError:
++        cash_delta = 0
++    cash_drawer = row['cash'] + cash_delta
++    now_str = datetime.now().strftime("%Y-%m-%d %H:%M:%S")
++    db.execute('''UPDATE shifts SET closed_at=?, closed_by=?, status='closed',
++                  total_orders=?, total_revenue=?, total_cash=?, total_card=?, cash_ops=? WHERE id=?''',
++               (now_str, g.user['id'], row['cnt'], row['rev'], row['cash'], row['card'], cash_delta, shift['id']))
+     db.commit()
+-    send_tg_async(f"📊 <b>СМЕНА #{shift['id']} ЗАКРЫТА (Z-Отчет)</b>\n📦 Заказов: {row['cnt']}\n💰 Выручка: <b>{row['rev']} ₽</b>\n💵 Наличные: {row['cash']} ₽\n💳 Карта: {row['card']} ₽")
++    send_tg_async(
++        f"📊 <b>СМЕНА #{shift['id']} ЗАКРЫТА (Z-Отчет)</b>\n"
++        f"📦 Заказов: {row['cnt']}\n💰 Выручка: <b>{row['rev']} ₽</b>\n"
++        f"💵 Наличные: {row['cash']} ₽\n💳 Карта: {row['card']} ₽\n"
++        f"🧾 Инкассация/размен: {cash_delta:+d} ₽\n"
++        f"💰 В кассе: <b>{cash_drawer} ₽</b>"
++    )
+     return redirect(url_for('reports'))
+ 
+ @app.route('/')
+@@ -383,13 +857,9 @@
+     validated_items, val_err = validate_and_prepare_items(raw_items, allow_stop_list=True)
+     if val_err: return jsonify({"error": val_err}), 400
+ 
+-    old_items = db.execute("SELECT menu_id, qty FROM order_items WHERE order_id=?", (order_id,)).fetchall()
+-    for oi in old_items:
+-        if oi['menu_id']:
+-            for r in db.execute("SELECT ingredient_id, amount FROM recipes WHERE menu_id=?", (oi['menu_id'],)).fetchall():
+-                db.execute("UPDATE ingredients SET stock = ROUND(stock + ?, 4) WHERE id=?", (r['amount'] * oi['qty'], r['ingredient_id']))
++    restore_ingredients(db, order_id, 'Изменение состава заказа')
+ 
+-    err, new_cost = deduct_ingredients(validated_items)
++    err, new_cost = deduct_ingredients(validated_items, reason='Изменение состава заказа')
+     if err:
+         db.rollback()
+         return jsonify({"error": err}), 400
+@@ -435,7 +905,9 @@
+     rows = db.execute(query, params).fetchall()
+     result = []; total_sum = 0
+     for r in rows:
+-        order = dict(r); order['items'] = [dict(i) for i in db.execute("SELECT * FROM order_items WHERE order_id=?", (r['id'],)).fetchall()]; result.append(order)
++        order = safe_order_row(r)
++        order['items'] = safe_items(db.execute("SELECT * FROM order_items WHERE order_id=?", (r['id'],)).fetchall())
++        result.append(order)
+         if order['status'] != 'cancelled': total_sum += order['total']
+     valid_count = len([o for o in result if o['status'] != 'cancelled'])
+     return jsonify({"orders": result, "stats": {"count": valid_count, "total": total_sum, "avg": round(total_sum / valid_count) if valid_count > 0 else 0}})
+@@ -445,19 +917,44 @@
+ def map_view(): return render_template('map.html')
+ 
+ @app.route('/api/zones', methods=['GET', 'POST'])
+-@login_required('admin')
+ def api_zones():
+     db = get_db()
+-    if request.method == 'POST':
+-        data = request.json
+-        db.execute("INSERT INTO zones (name, price, polygon_data) VALUES (?,?,?)", (data['name'], int(data['price']), data['polygon_data'])); db.commit()
+-        return jsonify({"success": True})
+-    return jsonify([dict(z) for z in db.execute("SELECT * FROM zones").fetchall()])
++    if request.method == 'GET':
++        return jsonify([
++            {"id": z['id'], "name": z['name'], "price": z['price']}
++            for z in db.execute("SELECT id, name, price FROM zones ORDER BY price, name").fetchall()
++        ])
++    if not getattr(g, 'user', None) or g.user['role'] != 'admin':
++        return jsonify({"error": "Доступ запрещён"}), 403
++    data = request.get_json(silent=True) or {}
++    name = clean_text(data.get('name', ''), 100)
++    polygon = data.get('polygon_data') or ''
++    if not isinstance(polygon, str) or len(polygon) > 200_000:
++        return jsonify({"error": "Некорректная геометрия зоны"}), 400
++    try:
++        price = int(data.get('price', 0))
++    except (TypeError, ValueError):
++        return jsonify({"error": "Некорректная цена"}), 400
++    if not name or price < 0 or price > 100_000:
++        return jsonify({"error": "Укажите название и цену зоны (0–100 000 ₽)"}), 400
++    db.execute("INSERT INTO zones (name, price, polygon_data) VALUES (?,?,?)", (name, price, polygon))
++    db.commit()
++    return jsonify({"success": True})
++
++
++@app.route('/api/zones/full')
++@login_required('admin')
++def api_zones_full():
++    return jsonify([dict(z) for z in get_db().execute("SELECT * FROM zones ORDER BY id").fetchall()])
++
+ 
+ @app.route('/api/zones/delete/<int:zone_id>', methods=['POST'])
+ @login_required('admin')
+ def api_zones_delete(zone_id):
+-    db = get_db(); db.execute("DELETE FROM zones WHERE id=?", (zone_id,)); db.commit(); return jsonify({"success": True})
++    db = get_db()
++    db.execute("DELETE FROM zones WHERE id=?", (zone_id,))
++    db.commit()
++    return jsonify({"success": True})
+ 
+ @app.route('/api/courier/location', methods=['POST'])
+ @login_required('courier', 'admin')
+@@ -491,16 +988,27 @@
+ @app.route('/api/chat/send', methods=['POST'])
+ @login_required()
+ def api_chat_send():
+-    data = request.json or {}; text = data.get('text', '').strip()
++    data = request.json or {}
++    if not rate_limit(f"chat:{g.user['id']}", 30, 60):
++        return jsonify({"error": "Слишком часто"}), 429
++    text = clean_text(data.get('text', ''), 1000)
+     if text:
+-        db = get_db(); db.execute("INSERT INTO messages (sender_id, sender_name, text, created_at, is_read) VALUES (?,?,?,?,0)", (session['user_id'], session['username'], text, datetime.now().strftime("%H:%M"))); db.commit()
++        db = get_db()
++        db.execute("INSERT INTO messages (sender_id, sender_name, text, created_at, is_read) VALUES (?,?,?,?,0)",
++                   (g.user['id'], g.user['username'], text, datetime.now().strftime("%H:%M")))
++        db.commit()
+         typing_users.pop(session['username'], None)
+     return jsonify({"success": True})
+ 
+ @app.route('/api/chat/typing', methods=['POST'])
+ @login_required()
+ def api_chat_typing():
+-    typing_users[session['username']] = time.time(); return jsonify({"success": True})
++    now = time.time()
++    for name, stamp in list(typing_users.items()):
++        if now - stamp > 30:
++            typing_users.pop(name, None)
++    typing_users[g.user['username']] = now
++    return jsonify({"success": True})
+ 
+ @app.route('/api/chat/clear', methods=['POST'])
+ @login_required('admin')
+@@ -705,13 +1213,20 @@
+     return render_template('analytics.html', total_rev=total_rev, total_cost=total_cost, total_profit=total_profit, margin=round((total_profit / total_rev * 100) if total_rev > 0 else 0, 1), recent_orders=db.execute("SELECT * FROM orders ORDER BY id DESC LIMIT 10").fetchall())
+ 
+ @app.route('/track/<int:order_id>')
+-def track_order(order_id): return render_template('track.html', order_id=order_id)
++def track_order(order_id):
++    if not order_token_valid(order_id, request.args.get('t', '')):
++        abort(404)
++    return render_template('track.html', order_id=order_id, token=request.args.get('t', ''))
+ 
+ @app.route('/api/track_order/<int:order_id>')
+ def api_track_order(order_id):
+-    order = get_db().execute("SELECT * FROM orders WHERE id=?", (order_id,)).fetchone()
+-    if not order: return jsonify({"error": "Not found"}), 404
+-    return jsonify({"status": order['status'], "total": order['total'], "created_at": order['created_at']})
++    if not order_token_valid(order_id, request.args.get('t', '')):
++        return jsonify({"error": "Not found"}), 404
++    order = get_db().execute("SELECT status, total, created_at, delivery_type FROM orders WHERE id=?", (order_id,)).fetchone()
++    if not order:
++        return jsonify({"error": "Not found"}), 404
++    return jsonify({"status": order['status'], "total": order['total'],
++                    "created_at": order['created_at'], "delivery_type": order['delivery_type']})
+ 
+ @app.route('/admin/shop_status', methods=['POST'])
+ @login_required('admin')
+@@ -722,10 +1237,12 @@
+ @app.route('/admin/banner/add', methods=['POST'])
+ @login_required('admin')
+ def admin_banner_add():
+-    file = request.files.get('image')
+-    if file and file.filename and allowed_file(file.filename):
+-        filename = 'banner_' + str(uuid.uuid4()) + '.' + file.filename.rsplit('.', 1)[1].lower(); file.save(os.path.join(app.config['UPLOAD_FOLDER'], filename))
+-        db = get_db(); db.execute("INSERT INTO banners (image, title) VALUES (?,?)", (filename, request.form.get('title', ''))); db.commit()
++    filename = save_upload(request.files.get('image'))
++    if filename:
++        db = get_db()
++        db.execute("INSERT INTO banners (image, title) VALUES (?,?)",
++                   (filename, clean_text(request.form.get('title', ''), 200)))
++        db.commit()
+     return redirect(url_for('admin_panel'))
+ 
+ @app.route('/admin/banner/delete/<int:b_id>', methods=['POST'])
+@@ -735,7 +1252,29 @@
+ 
+ @app.route('/admin/backup_db')
+ @login_required('admin')
+-def backup_db(): return send_file(DB_PATH, as_attachment=True, download_name=f"sushi_backup_{datetime.now().strftime('%Y%m%d_%H%M')}.db")
++def backup_db():
++    tmp = tempfile.NamedTemporaryFile(prefix='sushi_backup_', suffix='.db', delete=False)
++    tmp.close()
++    src = sqlite3.connect(DB_PATH, timeout=10)
++    dst = sqlite3.connect(tmp.name)
++    try:
++        with dst:
++            src.backup(dst)
++    finally:
++        dst.close()
++        src.close()
++
++    @after_this_request
++    def cleanup(response):
++        try:
++            os.unlink(tmp.name)
++        except OSError:
++            pass
++        return response
++
++    return send_file(tmp.name, as_attachment=True,
++                     download_name=f"sushi_backup_{datetime.now().strftime('%Y%m%d_%H%M')}.db",
++                     mimetype='application/octet-stream')
+ 
+ @app.route('/admin')
+ @login_required('admin')
+@@ -757,18 +1296,43 @@
+ @app.route('/admin/users/add', methods=['POST'])
+ @login_required('admin')
+ def admin_user_add():
+-    username = request.form.get('username', '').strip(); password = request.form.get('password', ''); role = request.form.get('role')
+-    if username and password and role:
++    username = clean_text(request.form.get('username', ''), 32)
++    password = request.form.get('password', '')
++    role = request.form.get('role', '')
++    if not re.fullmatch(r'[A-Za-z0-9_.-]{3,32}', username):
++        flash('Логин: 3-32 символа, латиница, цифры, точка, дефис, подчёркивание')
++    elif role not in USER_ROLES:
++        flash('Некорректная роль')
++    elif len(password) < 10:
++        flash('Пароль должен быть не короче 10 символов')
++    elif password == username:
++        flash('Пароль не должен совпадать с логином')
++    else:
+         db = get_db()
+-        try: db.execute("INSERT INTO users (username, password_hash, role, created_at) VALUES (?,?,?,?)", (username, generate_password_hash(password), role, datetime.now().strftime("%Y-%m-%d %H:%M:%S"))); db.commit()
+-        except sqlite3.IntegrityError: pass
++        try:
++            db.execute("INSERT INTO users (username, password_hash, role, created_at) VALUES (?,?,?,?)",
++                       (username, generate_password_hash(password), role, datetime.now().strftime("%Y-%m-%d %H:%M:%S")))
++            db.commit()
++        except sqlite3.IntegrityError:
++            flash('Пользователь с таким логином уже существует')
+     return redirect(url_for('admin_panel'))
+ 
+ @app.route('/admin/users/delete/<int:user_id>', methods=['POST'])
+ @login_required('admin')
+ def admin_user_delete(user_id):
+-    if user_id == session.get('user_id'): return "Вы не можете удалить свой аккаунт!", 400
+-    db = get_db(); db.execute("DELETE FROM users WHERE id=?", (user_id,)); db.commit(); return redirect(url_for('admin_panel'))
++    if user_id == g.user['id']:
++        return "Вы не можете удалить свой аккаунт!", 400
++    db = get_db()
++    target = db.execute("SELECT id, role FROM users WHERE id=?", (user_id,)).fetchone()
++    if not target:
++        return redirect(url_for('admin_panel'))
++    if target['role'] == 'admin':
++        admins = db.execute("SELECT COUNT(*) FROM users WHERE role='admin'").fetchone()[0]
++        if admins <= 1:
++            return "Нельзя удалить последнего администратора!", 400
++    db.execute("DELETE FROM users WHERE id=?", (user_id,))
++    db.commit()
++    return redirect(url_for('admin_panel'))
+ 
+ @app.route('/admin/export/orders')
+ @login_required('admin')
+@@ -792,7 +1356,9 @@
+ 
+ @app.route('/api/check_promo', methods=['POST'])
+ def check_promo():
+-    data = request.json or {}; code = data.get('code', '').strip().upper()
++    if not rate_limit(f"promo:{request.remote_addr}", 30, 60):
++        return jsonify({"success": False, "error": "Слишком много запросов"}), 429
++    data = request.json or {}; code = clean_text(data.get('code', ''), 40).upper()
+     promo = get_db().execute("SELECT * FROM promocodes WHERE code=? AND is_active=1", (code,)).fetchone()
+     if promo: return jsonify({"success": True, "type": promo['discount_type'], "value": promo['discount_value']})
+     return jsonify({"success": False, "error": "Промокод не найден"})
+@@ -815,12 +1381,20 @@
+ @app.route('/admin/menu/add', methods=['POST'])
+ @login_required('admin')
+ def admin_menu_add():
+-    name, price, category = request.form.get('name'), request.form.get('price'), request.form.get('category')
+-    file = request.files.get('image'); filename = ''
+-    if file and file.filename and allowed_file(file.filename):
+-        filename = str(uuid.uuid4()) + '.' + file.filename.rsplit('.', 1)[1].lower(); file.save(os.path.join(app.config['UPLOAD_FOLDER'], filename))
+-    if name and price and category:
+-        db = get_db(); db.execute("INSERT INTO menu (name, price, category, image, composition, modifiers, sort_weight) VALUES (?,?,?,?,?,?,?)", (name, int(price), category, filename, request.form.get('composition', ''), request.form.get('modifiers', ''), int(request.form.get('sort_weight', 0)))); db.commit()
++    name = clean_text(request.form.get('name', ''), 120)
++    category = clean_text(request.form.get('category', ''), 60)
++    try:
++        price = int(request.form.get('price') or 0)
++        sort_weight = int(request.form.get('sort_weight') or 0)
++    except (TypeError, ValueError):
++        return "Некорректная цена", 400
++    filename = save_upload(request.files.get('image'))
++    if name and 0 < price <= 1_000_000 and category:
++        db = get_db()
++        db.execute("INSERT INTO menu (name, price, category, image, composition, modifiers, sort_weight) VALUES (?,?,?,?,?,?,?)",
++                   (name, price, category, filename, clean_text(request.form.get('composition', ''), 1000),
++                    clean_text(request.form.get('modifiers', ''), 500), sort_weight))
++        db.commit()
+     return redirect(url_for('admin_panel'))
+ 
+ @app.route('/admin/menu/edit/<int:menu_id>', methods=['GET', 'POST'])
+@@ -828,15 +1402,35 @@
+ def admin_menu_edit(menu_id):
+     db = get_db()
+     if request.method == 'POST':
+-        name, price, category = request.form.get('name'), request.form.get('price'), request.form.get('category')
+-        file = request.files.get('image')
+-        if file and file.filename and allowed_file(file.filename):
+-            filename = str(uuid.uuid4()) + '.' + file.filename.rsplit('.', 1)[1].lower(); file.save(os.path.join(app.config['UPLOAD_FOLDER'], filename))
+-            db.execute("UPDATE menu SET name=?, price=?, category=?, composition=?, modifiers=?, image=?, sort_weight=? WHERE id=?", (name, int(price), category, request.form.get('composition', ''), request.form.get('modifiers', ''), filename, int(request.form.get('sort_weight', 0)), menu_id))
+-        else: db.execute("UPDATE menu SET name=?, price=?, category=?, composition=?, modifiers=?, sort_weight=? WHERE id=?", (name, int(price), category, request.form.get('composition', ''), request.form.get('modifiers', ''), int(request.form.get('sort_weight', 0)), menu_id))
++        name = clean_text(request.form.get('name', ''), 120)
++        category = clean_text(request.form.get('category', ''), 60)
++        try:
++            price = int(request.form.get('price') or 0)
++            sort_weight = int(request.form.get('sort_weight') or 0)
++        except (TypeError, ValueError):
++            return "Некорректная цена", 400
++        filename = save_upload(request.files.get('image'))
++        if not name or price <= 0 or not category:
++            return "Заполните название, цену и категорию", 400
++        if filename:
++            db.execute("UPDATE menu SET name=?, price=?, category=?, composition=?, modifiers=?, image=?, sort_weight=? WHERE id=?",
++                       (name, price, category, clean_text(request.form.get('composition', ''), 1000),
++                        clean_text(request.form.get('modifiers', ''), 500), filename, sort_weight, menu_id))
++        else:
++            db.execute("UPDATE menu SET name=?, price=?, category=?, composition=?, modifiers=?, sort_weight=? WHERE id=?",
++                       (name, price, category, clean_text(request.form.get('composition', ''), 1000),
++                        clean_text(request.form.get('modifiers', ''), 500), sort_weight, menu_id))
+         db.execute("DELETE FROM recipes WHERE menu_id=?", (menu_id,))
+         for key, val in request.form.items():
+-            if key.startswith('ing_') and val.strip(): db.execute("INSERT INTO recipes (menu_id, ingredient_id, amount) VALUES (?,?,?)", (menu_id, key.split('_')[1], float(val)))
++            if key.startswith('ing_') and val.strip():
++                try:
++                    amount = float(val)
++                    ingredient_id = int(key.split('_')[1])
++                except (TypeError, ValueError):
++                    continue
++                if 0 < amount <= 100000:
++                    db.execute("INSERT INTO recipes (menu_id, ingredient_id, amount) VALUES (?,?,?)",
++                               (menu_id, ingredient_id, amount))
+         db.commit(); return redirect(url_for('admin_panel'))
+     return render_template('edit_menu.html', item=db.execute("SELECT * FROM menu WHERE id=?", (menu_id,)).fetchone(), ingredients=db.execute("SELECT * FROM ingredients ORDER BY name").fetchall(), recipe={r['ingredient_id']: r['amount'] for r in db.execute("SELECT * FROM recipes WHERE menu_id=?", (menu_id,)).fetchall()})
+ 
+@@ -862,60 +1456,156 @@
+ 
+ @app.route('/rate/<int:order_id>', methods=['GET', 'POST'])
+ def rate_order(order_id):
+-    db = get_db(); order = db.execute("SELECT * FROM orders WHERE id=?", (order_id,)).fetchone()
+-    if not order: abort(404)
++    if not order_token_valid(order_id, request.args.get('t', '')):
++        abort(404)
++    db = get_db()
++    order = db.execute("SELECT * FROM orders WHERE id=?", (order_id,)).fetchone()
++    if not order:
++        abort(404)
+     if request.method == 'POST':
+-        if order['rating'] > 0: return "<h1 style='text-align:center; color:#ff9f0a; font-family:sans-serif; margin-top:50px'>Вы уже оставили отзыв!</h1>"
+-        rating_val = min(5, max(1, int(request.form.get('rating', 5))))
+-        db.execute("UPDATE orders SET rating=?, review_text=? WHERE id=?", (rating_val, request.form.get('review_text', '').strip(), order_id)); db.commit()
++        if not order_token_valid(order_id, request.form.get('t', request.args.get('t', ''))):
++            abort(403)
++        if order['status'] != 'done':
++            return "<h1 style='text-align:center; font-family:sans-serif; margin-top:50px'>Оценить можно только выполненный заказ</h1>", 400
++        if order['rating'] > 0:
++            return "<h1 style='text-align:center; color:#ff9f0a; font-family:sans-serif; margin-top:50px'>Вы уже оставили отзыв!</h1>"
++        try:
++            rating_val = min(5, max(1, int(request.form.get('rating', 5))))
++        except (TypeError, ValueError):
++            rating_val = 5
++        db.execute("UPDATE orders SET rating=?, review_text=? WHERE id=?",
++                   (rating_val, clean_text(request.form.get('review_text', ''), 1000), order_id))
++        db.commit()
+         return "<h1 style='text-align:center; color:#30d158; font-family:sans-serif; margin-top:50px'>Спасибо за отзыв!</h1>"
+-    return render_template('rate.html', order=order)
++    return render_template('rate.html', order=order, token=request.args.get('t', ''))
+ 
+ @app.route('/site')
+ def public_site():
+     db = get_db()
+     return render_template('public_site.html', menu=db.execute("SELECT * FROM menu WHERE available=1 AND stop_list=0 ORDER BY sort_weight DESC, category, name").fetchall(), categories=db.execute("SELECT DISTINCT category FROM menu WHERE available=1 AND stop_list=0 ORDER BY category").fetchall(), shop_open=is_shop_open(), banners=db.execute("SELECT * FROM banners ORDER BY id DESC").fetchall())
+ 
++PUBLIC_PAYMENT_METHODS = {'наличные', 'карта', 'перевод'}
++
+ @app.route('/api/public_order', methods=['POST'])
+ def public_order():
+-    if not is_shop_open(): return jsonify({"error": "Мы работаем с 10:00 до 21:30."}), 400
+-    data = request.json or {}; raw_items = data.get('items', [])
+-    if not raw_items: return jsonify({"error": "Пустой заказ"}), 400
++    if not rate_limit(f"public_order:{request.remote_addr}", 5, 600):
++        return jsonify({"error": "Слишком много попыток оформления. Попробуйте через 10 минут."}), 429
++    if not is_shop_open():
++        return jsonify({"error": "Мы работаем с 10:00 до 21:30."}), 400
++    data = request.get_json(silent=True) or {}
++    raw_items = data.get('items', [])
++    if not raw_items:
++        return jsonify({"error": "Пустой заказ"}), 400
+     items, val_err = validate_and_prepare_items(raw_items, allow_stop_list=False)
+-    if val_err: return jsonify({"error": val_err}), 400
+-    db = get_db(); err, total_cost = deduct_ingredients(items)
+-    if err: db.rollback(); return jsonify({"error": err}), 400
+-    shift = get_open_shift(); shift_id = shift['id'] if shift else None
++    if val_err:
++        return jsonify({"error": val_err}), 400
++    delivery_type = data.get('delivery_type', 'доставка')
++    if delivery_type not in DELIVERY_TYPES:
++        return jsonify({"error": "Некорректный способ получения"}), 400
++    pay_method = data.get('payment_method', 'не указан')
++    if pay_method not in PUBLIC_PAYMENT_METHODS:
++        return jsonify({"error": "Некорректный способ оплаты"}), 400
++    phone = clean_text(data.get('phone', ''), 30)
++    if not PHONE_RE.match(phone):
++        return jsonify({"error": "Укажите корректный номер телефона"}), 400
++    address = clean_text(data.get('address', ''), 300)
++    if delivery_type == 'доставка' and len(address) < 5:
++        return jsonify({"error": "Укажите адрес доставки"}), 400
++    if delivery_type == 'самовывоз':
++        address = 'Самовывоз'
++    comment = clean_text(data.get('comment', ''), 500)
++    zone_name = clean_text(data.get('zone', ''), 100) if delivery_type == 'доставка' else ''
++    try:
++        change_from = max(0, int(data.get('change_from', 0) or 0))
++    except (TypeError, ValueError):
++        return jsonify({"error": "Некорректная сумма для сдачи"}), 400
++    promo_code = clean_text(data.get('promo_code', ''), 40).upper()
++    client_request_id = clean_text(data.get('client_request_id', ''), 64) or uuid.uuid4().hex
++    db = get_db()
++    existing = db.execute("SELECT id FROM orders WHERE client_request_id=?", (client_request_id,)).fetchone()
++    if existing:
++        return jsonify({"success": True, "order_id": existing['id'], "duplicate": True,
++                        "track_url": url_for('track_order', order_id=existing['id'], t=order_token(existing['id']))})
+     subtotal = sum(i['price'] * i['qty'] for i in items)
+-    promo_code = data.get('promo_code', '').strip().upper(); promo_discount = 0
++    promo_discount = 0
+     if promo_code:
+         promo = db.execute("SELECT * FROM promocodes WHERE code=? AND is_active=1", (promo_code,)).fetchone()
+-        if promo: promo_discount = (subtotal * promo['discount_value']) // 100 if promo['discount_type'] == 'percent' else promo['discount_value']
+-    total = max(0, subtotal - promo_discount)
+-    phone = data.get('phone', '').strip(); address = data.get('address', '').strip()
+-    pay_method = data.get('payment_method', 'не указан'); change_from = int(data.get('change_from', 0) or 0)
+-    delivery_type = data.get('delivery_type', 'доставка')
+-    if delivery_type == 'самовывоз': address = 'Самовывоз'
+-    pay_cash, pay_card = split_payment_amounts(pay_method, total, total if pay_method == 'наличные' else 0)
++        if not promo:
++            return jsonify({"error": "Промокод не найден"}), 400
++        promo_discount = (subtotal * promo['discount_value']) // 100 if promo['discount_type'] == 'percent' else promo['discount_value']
++        promo_discount = max(0, min(promo_discount, subtotal))
++    client = db.execute("SELECT * FROM clients WHERE phone=?", (phone,)).fetchone()
++    client_level = client['level'] if client else 'bronze'
++    delivery_price = resolve_zone_price(db, zone_name, delivery_type, client_level)
++    total = max(0, subtotal - promo_discount) + delivery_price
++    if pay_method == 'наличные' and change_from and change_from < total:
++        return jsonify({"error": "Сумма для сдачи меньше суммы заказа"}), 400
++    err, total_cost = deduct_ingredients(items, reason='Заказ с сайта')
++    if err:
++        db.rollback()
++        return jsonify({"error": err}), 400
+     now_str = datetime.now().strftime("%Y-%m-%d %H:%M:%S")
+-    cur = db.execute("INSERT INTO orders (created_at, status, total, cost, address, phone, comment, shift_id, payment_method, payment_cash, payment_card, change_from, delivery_type, promo_code, source) VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)", (now_str, 'new', total, total_cost, address, phone, data.get('comment', ''), shift_id, pay_method, pay_cash, pay_card, change_from, delivery_type, promo_code, 'Сайт'))
+-    order_id = cur.lastrowid
+-    for i in items: db.execute("INSERT INTO order_items (order_id, menu_id, name, price, qty, modifiers) VALUES (?,?,?,?,?,?)", (order_id, i['id'], i['name'], i['price'], i['qty'], i['mods']))
+-    if phone:
+-        client = db.execute("SELECT * FROM clients WHERE phone=?", (phone,)).fetchone()
+-        new_total_spent = (client['total_spent'] if client else 0) + total
+-        new_level = 'gold' if new_total_spent >= 30000 else ('silver' if new_total_spent >= 10000 else 'bronze')
+-        cashback_rate = 0.10 if new_level == 'gold' else (0.07 if new_level == 'silver' else 0.05)
+-        earned_bonus = int(total * cashback_rate)
+-        db.execute("INSERT INTO clients (phone, total_spent, orders_count, last_order_at, level, bonuses) VALUES (?,?,?,?,?,?) ON CONFLICT(phone) DO UPDATE SET total_spent=total_spent+?, orders_count=orders_count+1, last_order_at=?, level=?, bonuses=bonuses+?", (phone, total, 1, now_str, new_level, earned_bonus, total, now_str, new_level, earned_bonus))
+-    db.commit(); send_tg_async(f"🌐 <b>НОВЫЙ ЗАКАЗ С САЙТА #{order_id}</b>\n💰 Сумма: <b>{total} ₽</b> ({pay_method})\n📞 Тел: {phone}\n📍 Адрес: {address}")
+-    return jsonify({"success": True, "order_id": order_id})
++    shift = get_open_shift()
++    shift_id = shift['id'] if shift else None
++    pay_cash, pay_card = split_payment_amounts(pay_method, total, change_from)
++    try:
++        cur = db.execute('''
++            INSERT INTO orders (created_at, status, total, cost, address, phone, comment, shift_id,
++                                payment_method, payment_cash, payment_card, change_from, delivery_type,
++                                delivery_zone, delivery_price, promo_code, source, client_request_id)
++            VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)
++        ''', (now_str, 'new', total, total_cost, address, phone, comment, shift_id,
++              pay_method, pay_cash, pay_card, change_from, delivery_type,
++              zone_name, delivery_price, promo_code, 'Сайт', client_request_id))
++        order_id = cur.lastrowid
++        for i in items:
++            db.execute("INSERT INTO order_items (order_id, menu_id, name, price, qty, modifiers) VALUES (?,?,?,?,?,?)",
++                       (order_id, i['id'], i['name'], i['price'], i['qty'], i['mods']))
++        ensure_client(db, phone, now_str)
++        db.execute(
++            "INSERT INTO order_status_history (order_id, old_status, new_status, changed_at, changed_by, comment) VALUES (?,?,?,?,?,?)",
++            (order_id, None, 'new', now_str, None, 'Заказ с сайта')
++        )
++        db.commit()
++    except sqlite3.IntegrityError:
++        db.rollback()
++        existing = db.execute("SELECT id FROM orders WHERE client_request_id=?", (client_request_id,)).fetchone()
++        if existing:
++            return jsonify({"success": True, "order_id": existing['id'], "duplicate": True,
++                            "track_url": url_for('track_order', order_id=existing['id'], t=order_token(existing['id']))})
++        return jsonify({"error": "Не удалось создать заказ, попробуйте ещё раз"}), 500
++    send_tg_async(
++        f"🌐 <b>НОВЫЙ ЗАКАЗ С САЙТА #{order_id}</b>\n"
++        f"💰 Сумма: <b>{total} ₽</b> ({pay_method})\n"
++        f"📞 Тел: {html_safe(phone)}\n📍 Адрес: {html_safe(address)}"
++    )
++    return jsonify({
++        "success": True,
++        "order_id": order_id,
++        "total": total,
++        "track_url": url_for('track_order', order_id=order_id, t=order_token(order_id)),
++        "rate_url": url_for('rate_order', order_id=order_id, t=order_token(order_id)),
++    })
++
+ 
+ @app.route('/api/site/client/<phone>')
+ def site_client(phone):
+-    order = get_db().execute("SELECT * FROM orders WHERE phone=? ORDER BY id DESC LIMIT 1", (phone,)).fetchone()
+-    if order: return jsonify({"success": True, "address": order['address'], "last_order": [dict(i) for i in get_db().execute("SELECT * FROM order_items WHERE order_id=?", (order['id'],)).fetchall()]})
+-    return jsonify({"success": False})
++    if not rate_limit(f"site_client:{request.remote_addr}", 20, 600):
++        return jsonify({"success": False}), 429
++    phone = clean_text(phone, 30)
++    if not PHONE_RE.match(phone):
++        return jsonify({"success": False}), 400
++    db = get_db()
++    order = db.execute("SELECT id, address FROM orders WHERE phone=? ORDER BY id DESC LIMIT 1", (phone,)).fetchone()
++    if not order or not order_token_valid(order['id'], request.args.get('t', '')):
++        return jsonify({"success": False})
++    client = db.execute("SELECT level, bonuses FROM clients WHERE phone=?", (phone,)).fetchone()
++    return jsonify({
++        "success": True,
++        "address": order['address'],
++        "level": client['level'] if client else 'bronze',
++        "bonuses": client['bonuses'] if client else 0,
++    })
+ 
+ @app.route('/api/client/<phone>')
+ @login_required('admin', 'cashier')
+@@ -927,57 +1617,111 @@
+ @app.route('/api/create_order', methods=['POST'])
+ @login_required('admin', 'cashier')
+ def create_order():
+-    if not is_shop_open(): return jsonify({"error": "Прием заказов приостановлен (10:00-21:30)."}), 400
+-    data = request.json or {}; raw_items = data.get('items', [])
+-    if not raw_items: return jsonify({"error": "Пустой заказ"}), 400
++    if not is_shop_open():
++        return jsonify({"error": "Прием заказов приостановлен (10:00-21:30)."}), 400
++    data = request.get_json(silent=True) or {}
++    raw_items = data.get('items', [])
++    if not raw_items:
++        return jsonify({"error": "Пустой заказ"}), 400
+     shift = get_open_shift()
+-    if not shift: return jsonify({"error": "Смена не открыта"}), 400
++    if not shift:
++        return jsonify({"error": "Смена не открыта"}), 400
+     items, val_err = validate_and_prepare_items(raw_items, allow_stop_list=False)
+-    if val_err: return jsonify({"error": val_err}), 400
+-    db = get_db(); err, total_cost = deduct_ingredients(items)
+-    if err: db.rollback(); return jsonify({"error": err}), 400
+-    phone = data.get('phone', '').strip(); address = data.get('address', '').strip()
++    if val_err:
++        return jsonify({"error": val_err}), 400
+     delivery_type = data.get('delivery_type', 'доставка')
+-    if delivery_type == 'самовывоз': address = 'Самовывоз'
+-    zone_str = data.get('zone', '') if delivery_type == 'доставка' else ''
++    if delivery_type not in DELIVERY_TYPES:
++        return jsonify({"error": "Некорректный способ получения"}), 400
++    payment_method = data.get('payment_method', 'не указан')
++    if payment_method not in PAYMENT_METHODS:
++        return jsonify({"error": "Некорректный способ оплаты"}), 400
++    phone = clean_text(data.get('phone', ''), 30)
++    if phone and not PHONE_RE.match(phone):
++        return jsonify({"error": "Некорректный телефон"}), 400
++    address = clean_text(data.get('address', ''), 300)
++    if delivery_type == 'доставка' and len(address) < 5:
++        return jsonify({"error": "Укажите адрес доставки"}), 400
++    if delivery_type == 'самовывоз':
++        address = 'Самовывоз'
++    zone_str = clean_text(data.get('zone', ''), 100) if delivery_type == 'доставка' else ''
++    comment = clean_text(data.get('comment', ''), 500)
++    scheduled_time = clean_text(data.get('scheduled_time', ''), 20) or None
++    client_request_id = clean_text(data.get('client_request_id', ''), 64) or uuid.uuid4().hex
++    db = get_db()
++    existing = db.execute("SELECT id FROM orders WHERE client_request_id=?", (client_request_id,)).fetchone()
++    if existing:
++        return jsonify({"success": True, "order_id": existing['id'], "duplicate": True})
+     subtotal = sum(i['price'] * i['qty'] for i in items)
+-    discount_val = max(0, int(data.get('discount', 0) or 0)); discount_type = data.get('discount_type', 'rub')
++    try:
++        discount_val = max(0, int(data.get('discount', 0) or 0))
++        use_bonus = max(0, int(data.get('use_bonus', 0) or 0))
++        change_from = max(0, int(data.get('change_from', 0) or 0))
++        raw_cash = max(0, int(data.get('pay_cash', 0) or 0))
++    except (TypeError, ValueError):
++        return jsonify({"error": "Некорректные числовые поля"}), 400
++    discount_type = data.get('discount_type', 'rub')
++    if discount_type not in ('rub', 'percent'):
++        discount_type = 'rub'
+     manual_discount = (subtotal * discount_val // 100) if discount_type == 'percent' else discount_val
+-    promo_code = data.get('promo_code', '').strip().upper(); promo_discount = 0
++    manual_discount = max(0, min(manual_discount, subtotal))
++    promo_code = clean_text(data.get('promo_code', ''), 40).upper()
++    promo_discount = 0
+     if promo_code:
+         promo = db.execute("SELECT * FROM promocodes WHERE code=? AND is_active=1", (promo_code,)).fetchone()
+-        if promo: promo_discount = (subtotal * promo['discount_value']) // 100 if promo['discount_type'] == 'percent' else promo['discount_value']
++        if not promo:
++            return jsonify({"error": "Промокод не найден"}), 400
++        promo_discount = (subtotal * promo['discount_value']) // 100 if promo['discount_type'] == 'percent' else promo['discount_value']
++        promo_discount = max(0, min(promo_discount, subtotal))
+     client = db.execute("SELECT * FROM clients WHERE phone=?", (phone,)).fetchone() if phone else None
+     client_level = client['level'] if client else 'bronze'
+-    delivery_price = parse_zone_price(zone_str, delivery_type, client_level)
++    delivery_price = resolve_zone_price(db, zone_str, delivery_type, client_level)
+     total = max(0, subtotal - manual_discount - promo_discount) + delivery_price
+-    use_bonus = max(0, int(data.get('use_bonus', 0) or 0))
+     actual_bonus = 0
+     if use_bonus > 0 and client:
+-        actual_bonus = min(use_bonus, client['bonuses'], total)
++        actual_bonus = min(use_bonus, client['bonuses'] or 0, total)
+         total = max(0, total - actual_bonus)
+-        db.execute("UPDATE clients SET bonuses = bonuses - ? WHERE phone=?", (actual_bonus, phone))
+-    payment_method = data.get('payment_method', 'не указан')
+-    pay_cash, pay_card = split_payment_amounts(payment_method, total, data.get('pay_cash', 0))
+-    change_from = max(0, int(data.get('change_from', 0) or 0))
+-    scheduled_time = data.get('scheduled_time', '').strip() or None
++    pay_cash, pay_card = split_payment_amounts(payment_method, total, raw_cash)
++    if payment_method == 'наличные' and change_from and change_from < total:
++        return jsonify({"error": "Сумма для сдачи меньше суммы заказа"}), 400
++    err, total_cost = deduct_ingredients(items, reason='Заказ с кассы')
++    if err:
++        db.rollback()
++        return jsonify({"error": err}), 400
+     now_str = datetime.now().strftime("%Y-%m-%d %H:%M:%S")
+-    cur = db.execute('''
+-        INSERT INTO orders (
+-            created_at, status, total, cost, address, phone, comment, shift_id, cashier_id, source,
+-            payment_method, payment_cash, payment_card, change_from, delivery_type, delivery_zone, delivery_price,
+-            used_bonus, scheduled_time, discount, discount_type, promo_code
+-        ) VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)
+-    ''', (now_str, 'new', total, total_cost, address, phone, data.get('comment', ''), shift['id'], session['user_id'], 'Касса', payment_method, pay_cash, pay_card, change_from, delivery_type, zone_str, delivery_price, actual_bonus, scheduled_time, discount_val, discount_type, promo_code))
+-    order_id = cur.lastrowid
+-    for i in items: db.execute("INSERT INTO order_items (order_id, menu_id, name, price, qty, modifiers) VALUES (?,?,?,?,?,?)", (order_id, i['id'], i['name'], i['price'], i['qty'], i['mods']))
+-    if phone:
+-        new_total_spent = (client['total_spent'] if client else 0) + total
+-        new_level = 'gold' if new_total_spent >= 30000 else ('silver' if new_total_spent >= 10000 else 'bronze')
+-        cashback_rate = 0.10 if new_level == 'gold' else (0.07 if new_level == 'silver' else 0.05)
+-        earned_bonus = int(total * cashback_rate)
+-        db.execute("INSERT INTO clients (phone, total_spent, orders_count, last_order_at, level, bonuses) VALUES (?,?,?,?,?,?) ON CONFLICT(phone) DO UPDATE SET total_spent=total_spent+?, orders_count=orders_count+1, last_order_at=?, level=?, bonuses=bonuses+?", (phone, total, 1, now_str, new_level, earned_bonus, total, now_str, new_level, earned_bonus))
+-    db.commit(); send_tg_async(f"🖥️ <b>ЗАКАЗ С КАССЫ #{order_id}</b>\n💰 Сумма: <b>{total} ₽</b> ({payment_method})\n📞 Тел: {phone or '—'}\n📍 Адрес: {address or '—'}")
++    try:
++        cur = db.execute('''
++            INSERT INTO orders (
++                created_at, status, total, cost, address, phone, comment, shift_id, cashier_id, source,
++                payment_method, payment_cash, payment_card, change_from, delivery_type, delivery_zone, delivery_price,
++                used_bonus, scheduled_time, discount, discount_type, promo_code, client_request_id
++            ) VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)
++        ''', (now_str, 'new', total, total_cost, address, phone, comment, shift['id'], g.user['id'], 'Касса',
++              payment_method, pay_cash, pay_card, change_from, delivery_type, zone_str, delivery_price,
++              actual_bonus, scheduled_time, discount_val, discount_type, promo_code, client_request_id))
++        order_id = cur.lastrowid
++        for i in items:
++            db.execute("INSERT INTO order_items (order_id, menu_id, name, price, qty, modifiers) VALUES (?,?,?,?,?,?)",
++                       (order_id, i['id'], i['name'], i['price'], i['qty'], i['mods']))
++        if actual_bonus and phone:
++            db.execute("UPDATE clients SET bonuses = MAX(0, COALESCE(bonuses,0) - ?) WHERE phone=?", (actual_bonus, phone))
++        if phone:
++            ensure_client(db, phone, now_str)
++        db.execute(
++            "INSERT INTO order_status_history (order_id, old_status, new_status, changed_at, changed_by, comment) VALUES (?,?,?,?,?,?)",
++            (order_id, None, 'new', now_str, g.user['id'], 'Заказ с кассы')
++        )
++        db.commit()
++    except sqlite3.IntegrityError:
++        db.rollback()
++        existing = db.execute("SELECT id FROM orders WHERE client_request_id=?", (client_request_id,)).fetchone()
++        if existing:
++            return jsonify({"success": True, "order_id": existing['id'], "duplicate": True})
++        return jsonify({"error": "Не удалось создать заказ, попробуйте ещё раз"}), 500
++    send_tg_async(
++        f"🖥️ <b>ЗАКАЗ С КАССЫ #{order_id}</b>\n"
++        f"💰 Сумма: <b>{total} ₽</b> ({payment_method})\n"
++        f"📞 Тел: {html_safe(phone) or '—'}\n📍 Адрес: {html_safe(address) or '—'}"
++    )
+     return jsonify({"success": True, "order_id": order_id, "total": total})
+ 
+ @app.route('/api/orders')
+@@ -989,7 +1733,12 @@
+         elif status == 'all_active': rows = db.execute("SELECT * FROM orders WHERE status IN ('new', 'cooking', 'ready', 'delivering') ORDER BY id").fetchall()
+         else: rows = db.execute("SELECT * FROM orders WHERE status=? ORDER BY id", (status,)).fetchall()
+     else: rows = db.execute("SELECT * FROM orders ORDER BY id DESC").fetchall()
+-    return jsonify([dict(r) | {"items": [dict(i) for i in db.execute("SELECT * FROM order_items WHERE order_id=?", (r['id'],)).fetchall()]} for r in rows])
++    result = []
++    for r in rows:
++        order = safe_order_row(r)
++        order['items'] = safe_items(db.execute("SELECT * FROM order_items WHERE order_id=?", (r['id'],)).fetchall())
++        result.append(order)
++    return jsonify(result)
+ 
+ @app.route('/api/courier/stats')
+ @login_required('courier', 'admin')
+@@ -1001,51 +1750,89 @@
+ @app.route('/api/set_status/<int:order_id>', methods=['POST'])
+ @login_required()
+ def set_status(order_id):
+-    data = request.json or {}; new_status = data.get('status'); db = get_db()
++    data = request.json or {}
++    new_status = clean_text(data.get('status', ''), 20)
++    db = get_db()
+     order = db.execute("SELECT * FROM orders WHERE id=?", (order_id,)).fetchone()
+-    if not order: return jsonify({"error": "Заказ не найден"}), 404
+-    if order['status'] == new_status: return jsonify({"success": True})
++    if not order:
++        return jsonify({"error": "Заказ не найден"}), 404
++    old_status = order['status']
++    if old_status == new_status:
++        return jsonify({"success": True})
++    if not can_transition(g.user['role'], old_status, new_status):
++        return jsonify({"error": f"Переход «{old_status} → {new_status}» запрещён для вашей роли"}), 403
+     now_str = datetime.now().strftime("%Y-%m-%d %H:%M:%S")
+     try:
+-        if new_status == 'cancelled' and order['status'] != 'cancelled':
+-            for i in db.execute("SELECT menu_id, qty FROM order_items WHERE order_id=?", (order_id,)).fetchall():
+-                if i['menu_id']:
+-                    for r in db.execute("SELECT ingredient_id, amount FROM recipes WHERE menu_id=?", (i['menu_id'],)).fetchall():
+-                        db.execute("UPDATE ingredients SET stock = ROUND(stock + ?, 4) WHERE id=?", (r['amount'] * i['qty'], r['ingredient_id']))
+-            if order['phone']:
+-                client = db.execute("SELECT * FROM clients WHERE phone=?", (order['phone'],)).fetchone()
+-                if client:
+-                    rate = 0.10 if client['level'] == 'gold' else (0.07 if client['level'] == 'silver' else 0.05)
+-                    earned = int(order['total'] * rate)
+-                    refund_bonus = dict(order).get('used_bonus') or 0
+-                    db.execute("UPDATE clients SET total_spent = MAX(0, total_spent - ?), orders_count = MAX(0, orders_count - 1), bonuses = MAX(0, bonuses - ? + ?) WHERE phone=?", (order['total'], earned, refund_bonus, order['phone']))
+-        if new_status == 'cooking':
++        if new_status == 'cancelled':
++            reason = clean_text(data.get('comment') or data.get('cancel_reason') or '', 300)
++            restore_ingredients(db, order_id, 'Отмена заказа')
++            if order['phone'] and order['client_credited']:
++                uncredit_client(db, order)
++            used_bonus = order['used_bonus'] or 0
++            if order['phone'] and used_bonus and not order['bonus_refunded']:
++                db.execute("UPDATE clients SET bonuses = COALESCE(bonuses,0) + ? WHERE phone=?", (used_bonus, order['phone']))
++                db.execute("UPDATE orders SET bonus_refunded=1 WHERE id=?", (order_id,))
++            db.execute("UPDATE orders SET status=?, cancel_reason=?, cook_end_time=COALESCE(cook_end_time, ?) WHERE id=?",
++                       ('cancelled', reason, now_str, order_id))
++        elif new_status == 'cooking':
+             db.execute("UPDATE orders SET status=?, cook_start_time=? WHERE id=?", (new_status, now_str, order_id))
+         elif new_status == 'ready':
+             db.execute("UPDATE orders SET status=?, cook_end_time=? WHERE id=?", (new_status, now_str, order_id))
+         elif new_status == 'delivering':
+-            c_name = data.get('courier_name') or session.get('username', '')
+-            db.execute("UPDATE orders SET status=?, courier_name=? WHERE id=?", (new_status, c_name, order_id))
+-        else:
+-            db.execute("UPDATE orders SET status=? WHERE id=?", (new_status, order_id))
++            if order['delivery_type'] == 'самовывоз':
++                return jsonify({"error": "Самовывоз нельзя отправить в доставку"}), 400
++            if g.user['role'] in ('courier', 'admin', 'cashier'):
++                courier_name = g.user['username']
++            else:
++                courier_name = clean_text(data.get('courier_name', ''), 100)
++            db.execute("UPDATE orders SET status=?, courier_name=? WHERE id=?", (new_status, courier_name, order_id))
++        elif new_status == 'done':
++            if order['delivery_type'] != 'самовывоз' and old_status != 'delivering':
++                return jsonify({"error": "Заказ доставки сначала должен быть передан курьеру"}), 400
++            db.execute("UPDATE orders SET status=?, cook_end_time=COALESCE(cook_end_time, ?) WHERE id=?",
++                       (new_status, now_str, order_id))
++            fresh = db.execute("SELECT * FROM orders WHERE id=?", (order_id,)).fetchone()
++            credit_client(db, fresh)
++        db.execute(
++            "INSERT INTO order_status_history (order_id, old_status, new_status, changed_at, changed_by, comment) VALUES (?,?,?,?,?,?)",
++            (order_id, old_status, new_status, now_str, g.user['id'], clean_text(data.get('comment', ''), 300))
++        )
+         db.commit()
+-        return jsonify({"success": True})
++        return jsonify({"success": True, "status": new_status})
+     except Exception as e:
+-        db.rollback(); return jsonify({"error": str(e)}), 500
++        db.rollback()
++        return jsonify({"error": "Не удалось изменить статус"}), 500
++
++
++@app.route('/api/order_history/<int:order_id>')
++@login_required()
++def order_history(order_id):
++    rows = get_db().execute(
++        "SELECT h.*, u.username FROM order_status_history h LEFT JOIN users u ON h.changed_by=u.id "
++        "WHERE h.order_id=? ORDER BY h.id", (order_id,)).fetchall()
++    return jsonify([dict(r) for r in rows])
+ 
+ 
+ @app.route('/api/cash_op', methods=['POST'])
+ @login_required('admin', 'cashier')
+ def cash_op():
+     data = request.json or {}
+-    op_type = data.get('op_type') # 'float_in' (размен) или 'collection' (инкассация)
+-    amount = int(data.get('amount', 0))
+-    comment = data.get('comment', '').strip()
++    op_type = data.get('op_type')  # 'float_in' (размен) или 'collection' (инкассация)
++    try:
++        amount = int(data.get('amount', 0))
++    except (TypeError, ValueError):
++        return jsonify({"error": "Некорректная сумма"}), 400
++    comment = clean_text(data.get('comment', ''), 300)
+     shift = get_open_shift()
+-    if not shift or amount <= 0: return jsonify({"error": "Смена не открыта или сумма некорректна"}), 400
++    if not shift:
++        return jsonify({"error": "Смена не открыта"}), 400
++    if op_type not in ('float_in', 'collection'):
++        return jsonify({"error": "Некорректный тип операции"}), 400
++    if amount <= 0 or amount > 10_000_000:
++        return jsonify({"error": "Сумма должна быть от 1 до 10 000 000 ₽"}), 400
+     db = get_db()
+     db.execute("INSERT INTO cash_operations (shift_id, op_type, amount, comment, created_at, username) VALUES (?,?,?,?,?,?)",
+-               (shift['id'], op_type, amount, comment, datetime.now().strftime("%Y-%m-%d %H:%M:%S"), session['username']))
++               (shift['id'], op_type, amount, comment, datetime.now().strftime("%Y-%m-%d %H:%M:%S"), g.user['username']))
+     db.commit()
+     return jsonify({"success": True})
+ 
+@@ -1195,10 +1982,12 @@
+     return redirect(url_for('warehouse_panel'))
+ 
+ @app.route('/board')
++@login_required('admin', 'cashier', 'kitchen', 'courier')
+ def public_board():
+     return render_template('board.html')
+ 
+ @app.route('/api/kitchen_load')
++@login_required('admin', 'cashier', 'kitchen', 'courier')
+ def api_kitchen_load():
+     db = get_db()
+     active_cnt = db.execute("SELECT COUNT(*) FROM orders WHERE status IN ('new', 'cooking')").fetchone()[0]
+@@ -1238,9 +2027,21 @@
+         })
+     return jsonify(points)
+ 
+-if __name__ == '__main__':
++if os.environ.get('SUSHI_SKIP_INIT') != '1':
+     init_db()
+-    print("="*55)
++
++if __name__ == '__main__':
++    port = int(os.environ.get('SUSHI_PORT', '5000'))
++    print("=" * 55)
+     print("🚀 СИСТЕМА КРЕВЕТКА PRO ЗАПУЩЕНА!")
+-    print("="*55)
+-    app.run(host='0.0.0.0', port=5000, debug=True)
++    print(f"🌍 http://0.0.0.0:{port}")
++    print("=" * 55)
++    if os.environ.get('SUSHI_DEBUG') == '1':
++        app.run(host='127.0.0.1', port=port, debug=True)
++    else:
++        try:
++            from waitress import serve
++            serve(app, host='0.0.0.0', port=port, threads=8)
++        except ImportError:
++            print('waitress не установлен, используется встроенный сервер Flask (без debug).')
++            app.run(host='0.0.0.0', port=port, debug=False)
+diff -ruN a/backup.sh b/backup.sh
+--- a/backup.sh	2026-10-29 23:55:23.583945714 +0300
++++ b/backup.sh	2026-11-01 00:54:41.419912789 +0300
+@@ -1,17 +1,47 @@
+ #!/bin/bash
+-# Скрипт резервного копирования базы данных Креветки
+-DB_PATH="$HOME/my-apps/sushi_pos/sushi.db"
+-BACKUP_DIR="$HOME/my-apps/sushi_pos/backups"
+-DATE=$(date +"%Y-%m-%d_%H-%M-%S")
+-DEST="$BACKUP_DIR/sushi_$DATE.db"
++# WAL-safe backup of the sushi POS database.
++# Usage: ./backup.sh [db_path] [backup_dir]
++set -euo pipefail
++
++APP_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
++DB_PATH="${1:-${SUSHI_DB:-$APP_DIR/sushi.db}}"
++BACKUP_DIR="${2:-${SUSHI_BACKUP_DIR:-$APP_DIR/backups}}"
++KEEP_DAYS="${SUSHI_BACKUP_DAYS:-30}"
++
++if [ ! -f "$DB_PATH" ]; then
++    echo "Database not found: $DB_PATH" >&2
++    exit 1
++fi
+ 
+-# Создаем папку, если ее нет
+ mkdir -p "$BACKUP_DIR"
++chmod 700 "$BACKUP_DIR" 2>/dev/null || true
++
++STAMP="$(date +%Y-%m-%d_%H-%M-%S)"
++DEST="$BACKUP_DIR/sushi_$STAMP.db"
++
++# sqlite3 .backup is safe with WAL and concurrent writers.
++if command -v sqlite3 >/dev/null 2>&1; then
++    sqlite3 "$DB_PATH" ".timeout 10000" ".backup '$DEST'"
++else
++    python3 - "$DB_PATH" "$DEST" <<'PY'
++import sqlite3
++import sys
++
++src = sqlite3.connect(sys.argv[1], timeout=10)
++dst = sqlite3.connect(sys.argv[2])
++try:
++    with dst:
++        src.backup(dst)
++finally:
++    dst.close()
++    src.close()
++PY
++fi
+ 
+-# Копируем базу
+-cp "$DB_PATH" "$DEST"
++gzip -9 "$DEST"
++chmod 600 "$DEST.gz" 2>/dev/null || true
+ 
+-# Удаляем бэкапы старше 30 дней, чтобы не забивать диск
+-find "$BACKUP_DIR" -type f -name "sushi_*.db" -mtime +30 -delete
++# Keep the last 30 days.
++find "$BACKUP_DIR" -type f -name 'sushi_*.db.gz' -mtime "+$KEEP_DAYS" -delete
+ 
+-echo "Бэкап создан: $DEST"
++echo "Backup created: $DEST.gz"
+diff -ruN a/requirements.txt b/requirements.txt
+--- a/requirements.txt	1970-01-01 04:00:00.000000000 +0400
++++ b/requirements.txt	2026-11-01 00:54:41.419912789 +0300
+@@ -0,0 +1,4 @@
++Flask>=3.0,<4
++Werkzeug>=3.0,<4
++openpyxl>=3.1,<4
++waitress>=3.0,<4
+diff -ruN a/run.py b/run.py
+--- a/run.py	1970-01-01 04:00:00.000000000 +0400
++++ b/run.py	2026-11-01 00:54:41.419912789 +0300
+@@ -0,0 +1,13 @@
++#!/usr/bin/env python3
++"""Production entry point: init/migrate DB, then serve with waitress."""
++import os
++
++os.environ.setdefault('SUSHI_SKIP_INIT', '1')
++from app import app, init_db  # noqa: E402
++
++if __name__ == '__main__':
++    init_db()
++    from waitress import serve
++
++    port = int(os.environ.get('SUSHI_PORT', '5000'))
++    serve(app, host='0.0.0.0', port=port, threads=8)
+diff -ruN a/static/security.js b/static/security.js
+--- a/static/security.js	1970-01-01 04:00:00.000000000 +0400
++++ b/static/security.js	2026-11-01 00:54:41.419912789 +0300
+@@ -0,0 +1,52 @@
++/* CSRF + escaping helpers for КРЕВЕТКА POS */
++(function () {
++  'use strict';
++  var meta = document.querySelector('meta[name="csrf-token"]');
++  var token = meta ? meta.getAttribute('content') : '';
++  window.CSRF_TOKEN = token;
++
++  window.esc = function (value) {
++    return String(value == null ? '' : value)
++      .replace(/&/g, '&amp;')
++      .replace(/</g, '&lt;')
++      .replace(/>/g, '&gt;')
++      .replace(/"/g, '&quot;')
++      .replace(/'/g, '&#39;');
++  };
++
++  if (window.fetch) {
++    var originalFetch = window.fetch.bind(window);
++    window.fetch = function (input, init) {
++      init = init || {};
++      var method = (init.method || (input && input.method) || 'GET').toUpperCase();
++      if (method !== 'GET' && method !== 'HEAD') {
++        var headers = new Headers(init.headers || {});
++        if (token && !headers.has('X-CSRF-Token')) headers.set('X-CSRF-Token', token);
++        init.headers = headers;
++      }
++      return originalFetch(input, init);
++    };
++  }
++
++  function addCsrfInputs() {
++    if (!token) return;
++    var forms = document.querySelectorAll('form');
++    for (var i = 0; i < forms.length; i++) {
++      var form = forms[i];
++      var method = (form.getAttribute('method') || 'get').toLowerCase();
++      if (method !== 'post') continue;
++      if (form.querySelector('input[name="csrf_token"]')) continue;
++      var input = document.createElement('input');
++      input.type = 'hidden';
++      input.name = 'csrf_token';
++      input.value = token;
++      form.appendChild(input);
++    }
++  }
++
++  if (document.readyState === 'loading') {
++    document.addEventListener('DOMContentLoaded', addCsrfInputs);
++  } else {
++    addCsrfInputs();
++  }
++})();
+diff -ruN a/templates/admin.html b/templates/admin.html
+--- a/templates/admin.html	2026-10-31 23:50:55.599960113 +0300
++++ b/templates/admin.html	2026-11-01 00:54:41.415912789 +0300
+@@ -1,4 +1,4 @@
+-<!DOCTYPE html><html lang="ru"><head><meta charset="UTF-8">
++<!DOCTYPE html><html lang="ru"><head><meta name="csrf-token" content="{{ csrf_token() }}"><script src="/static/security.js"></script><meta charset="UTF-8">
+ <title>Админ-панель — Креветка</title>
+ <link rel="manifest" href="/manifest.json">
+ <meta name="theme-color" content="#0a0a0a">
+diff -ruN a/templates/analytics.html b/templates/analytics.html
+--- a/templates/analytics.html	2026-10-31 23:03:12.999995523 +0300
++++ b/templates/analytics.html	2026-11-01 00:54:41.415912789 +0300
+@@ -1,4 +1,4 @@
+-<!DOCTYPE html><html lang="ru"><head><meta charset="UTF-8">
++<!DOCTYPE html><html lang="ru"><head><meta name="csrf-token" content="{{ csrf_token() }}"><script src="/static/security.js"></script><meta charset="UTF-8">
+ <title>Продвинутая аналитика — Креветка PRO</title>
+ <link rel="stylesheet" href="/static/pro_style.css">
+ <style>
+diff -ruN a/templates/autopilot.html b/templates/autopilot.html
+--- a/templates/autopilot.html	2026-10-31 23:34:59.735971937 +0300
++++ b/templates/autopilot.html	2026-11-01 00:54:41.415912789 +0300
+@@ -1,4 +1,4 @@
+-<!DOCTYPE html><html lang="ru"><head><meta charset="UTF-8">
++<!DOCTYPE html><html lang="ru"><head><meta name="csrf-token" content="{{ csrf_token() }}"><script src="/static/security.js"></script><meta charset="UTF-8">
+ <title>AI Шеф-Автопилот — {{ brand.brand_name }}</title>
+ <link rel="stylesheet" href="/static/pro_style.css">
+ <style>
+diff -ruN a/templates/board.html b/templates/board.html
+--- a/templates/board.html	2026-10-31 23:34:59.735971937 +0300
++++ b/templates/board.html	2026-11-01 00:54:41.415912789 +0300
+@@ -1,4 +1,4 @@
+-<!DOCTYPE html><html lang="ru"><head><meta charset="UTF-8">
++<!DOCTYPE html><html lang="ru"><head><meta name="csrf-token" content="{{ csrf_token() }}"><script src="/static/security.js"></script><meta charset="UTF-8">
+ <title>Табло готовности — {{ brand.brand_name }}</title>
+ <link rel="stylesheet" href="/static/pro_style.css">
+ <style>
+diff -ruN a/templates/cashier.html b/templates/cashier.html
+--- a/templates/cashier.html	2026-10-31 23:50:55.603960113 +0300
++++ b/templates/cashier.html	2026-11-01 00:54:41.415912789 +0300
+@@ -1,4 +1,4 @@
+-<!DOCTYPE html><html lang="ru"><head><meta charset="UTF-8">
++<!DOCTYPE html><html lang="ru"><head><meta name="csrf-token" content="{{ csrf_token() }}"><script src="/static/security.js"></script><meta charset="UTF-8">
+ <title>Супер Касса — {{ brand.brand_name }}</title>
+ <link rel="stylesheet" href="/static/pro_style.css">
+ <style>
+diff -ruN a/templates/change_password.html b/templates/change_password.html
+--- a/templates/change_password.html	1970-01-01 04:00:00.000000000 +0400
++++ b/templates/change_password.html	2026-11-01 00:54:41.419912789 +0300
+@@ -0,0 +1,31 @@
++<!DOCTYPE html><html lang="ru"><head><meta charset="UTF-8">
++<meta name="viewport" content="width=device-width, initial-scale=1.0">
++<title>Смена пароля — Креветка</title>
++<meta name="csrf-token" content="{{ csrf_token() }}"><script src="/static/security.js"></script>
++<style>
++body{font-family:-apple-system,sans-serif;background:#1e1e1e;color:#fff;display:flex;align-items:center;justify-content:center;min-height:100vh;margin:0;padding:20px}
++.box{background:#252525;padding:36px;border-radius:16px;width:360px;max-width:100%;box-shadow:0 16px 40px rgba(0,0,0,.45)}
++h1{margin-top:0;text-align:center;font-size:22px}
++p.hint{color:#aaa;font-size:13px;line-height:1.45;text-align:center}
++label{display:block;font-size:13px;color:#aaa;margin:14px 0 4px}
++input{width:100%;box-sizing:border-box;padding:12px;background:#1e1e1e;color:#fff;border:1px solid #444;border-radius:8px}
++button{width:100%;padding:14px;background:#30d158;color:#000;border:none;border-radius:8px;font-size:16px;font-weight:bold;cursor:pointer;margin-top:18px}
++a{display:block;text-align:center;color:#0a84ff;margin-top:14px;text-decoration:none;font-size:13px}
++.msg{color:#ff453a;text-align:center;margin-top:14px}
++</style><link rel="stylesheet" href="/static/pro_style.css">
++</head><body>
++<div class="box">
++<h1>🔐 Смена пароля</h1>
++<p class="hint">Пароль по умолчанию больше не действует. Задайте новый пароль (не короче 10 символов).</p>
++<form method="post">
++<label>Текущий пароль</label>
++<input name="old_password" type="password" required autofocus autocomplete="current-password">
++<label>Новый пароль</label>
++<input name="new_password" type="password" required minlength="10" autocomplete="new-password">
++<label>Повторите новый пароль</label>
++<input name="confirm_password" type="password" required minlength="10" autocomplete="new-password">
++<button type="submit">Сохранить пароль</button>
++</form>
++{% for m in get_flashed_messages() %}<div class="msg">{{ m }}</div>{% endfor %}
++<a href="/logout">Выйти</a>
++</div></body></html>
+diff -ruN a/templates/chat.html b/templates/chat.html
+--- a/templates/chat.html	2026-10-31 23:50:55.603960113 +0300
++++ b/templates/chat.html	2026-11-01 00:54:41.415912789 +0300
+@@ -1,4 +1,4 @@
+-<!DOCTYPE html><html lang="ru"><head><meta charset="UTF-8">
++<!DOCTYPE html><html lang="ru"><head><meta name="csrf-token" content="{{ csrf_token() }}"><script src="/static/security.js"></script><meta charset="UTF-8">
+ <title>Чат — Креветка</title>
+ <!-- PWA для отдельного приложения -->
+ <link rel="manifest" href="/chat_manifest.json">
+diff -ruN a/templates/courier.html b/templates/courier.html
+--- a/templates/courier.html	2026-10-31 02:50:55.431953125 +0300
++++ b/templates/courier.html	2026-11-01 00:54:41.415912789 +0300
+@@ -1,4 +1,4 @@
+-<!DOCTYPE html><html lang="ru"><head><meta charset="UTF-8"><meta name="viewport" content="width=device-width, initial-scale=1.0">
++<!DOCTYPE html><html lang="ru"><head><meta name="csrf-token" content="{{ csrf_token() }}"><script src="/static/security.js"></script><meta charset="UTF-8"><meta name="viewport" content="width=device-width, initial-scale=1.0">
+ <title>Курьер PRO — Креветка</title>
+ <link rel="manifest" href="/manifest.json">
+ <style>
+diff -ruN a/templates/crm.html b/templates/crm.html
+--- a/templates/crm.html	2026-10-31 02:50:55.439953125 +0300
++++ b/templates/crm.html	2026-11-01 00:54:41.415912789 +0300
+@@ -1,4 +1,4 @@
+-<!DOCTYPE html><html lang="ru"><head><meta charset="UTF-8"><title>CRM - Клиенты</title>
++<!DOCTYPE html><html lang="ru"><head><meta name="csrf-token" content="{{ csrf_token() }}"><script src="/static/security.js"></script><meta charset="UTF-8"><title>CRM - Клиенты</title>
+ <link rel="manifest" href="/manifest.json">
+ <meta name="theme-color" content="#0a0a0a">
+ <style>
+diff -ruN a/templates/edit_menu.html b/templates/edit_menu.html
+--- a/templates/edit_menu.html	2026-10-31 23:23:07.439980748 +0300
++++ b/templates/edit_menu.html	2026-11-01 00:54:41.415912789 +0300
+@@ -1,4 +1,4 @@
+-<!DOCTYPE html><html lang="ru"><head><meta charset="UTF-8">
++<!DOCTYPE html><html lang="ru"><head><meta name="csrf-token" content="{{ csrf_token() }}"><script src="/static/security.js"></script><meta charset="UTF-8">
+ <title>Техкарта (ТТК): {{ item.name }}</title>
+ <link rel="stylesheet" href="/static/pro_style.css">
+ <style>
+diff -ruN a/templates/history.html b/templates/history.html
+--- a/templates/history.html	2026-10-31 02:50:55.431953125 +0300
++++ b/templates/history.html	2026-11-01 00:54:41.415912789 +0300
+@@ -1,4 +1,4 @@
+-<!DOCTYPE html><html lang="ru"><head><meta charset="UTF-8">
++<!DOCTYPE html><html lang="ru"><head><meta name="csrf-token" content="{{ csrf_token() }}"><script src="/static/security.js"></script><meta charset="UTF-8">
+ <title>История заказов</title>
+ <style>
+ body{font-family:-apple-system,sans-serif;background:#1e1e1e;color:#fff;margin:0;padding:30px}
+diff -ruN a/templates/kitchen.html b/templates/kitchen.html
+--- a/templates/kitchen.html	2026-10-31 02:50:55.439953125 +0300
++++ b/templates/kitchen.html	2026-11-01 00:54:41.415912789 +0300
+@@ -1,4 +1,4 @@
+-<!DOCTYPE html><html lang="ru"><head><meta charset="UTF-8"><meta name="viewport" content="width=device-width, initial-scale=1.0">
++<!DOCTYPE html><html lang="ru"><head><meta name="csrf-token" content="{{ csrf_token() }}"><script src="/static/security.js"></script><meta charset="UTF-8"><meta name="viewport" content="width=device-width, initial-scale=1.0">
+ <title>Кухня PRO — Креветка</title>
+ <style>
+ body{font-family:-apple-system,sans-serif;background:#0a0a0a;color:#fff;margin:0;padding:20px}
+diff -ruN a/templates/login.html b/templates/login.html
+--- a/templates/login.html	2026-10-31 02:50:55.439953125 +0300
++++ b/templates/login.html	2026-11-01 00:54:41.415912789 +0300
+@@ -1,4 +1,4 @@
+-<!DOCTYPE html><html lang="ru"><head><meta charset="UTF-8">
++<!DOCTYPE html><html lang="ru"><head><meta name="csrf-token" content="{{ csrf_token() }}"><script src="/static/security.js"></script><meta charset="UTF-8">
+ <title>Вход</title>
+ <style>
+ body{font-family:-apple-system,sans-serif;background:#1e1e1e;color:#fff;display:flex;align-items:center;justify-content:center;height:100vh;margin:0}
+diff -ruN a/templates/map.html b/templates/map.html
+--- a/templates/map.html	2026-10-31 23:50:55.599960113 +0300
++++ b/templates/map.html	2026-11-01 00:54:41.415912789 +0300
+@@ -1,4 +1,4 @@
+-<!DOCTYPE html><html lang="ru"><head><meta charset="UTF-8">
++<!DOCTYPE html><html lang="ru"><head><meta name="csrf-token" content="{{ csrf_token() }}"><script src="/static/security.js"></script><meta charset="UTF-8">
+ <title>Карта Инты и Зоны доставки — Креветка</title>
+ <link rel="stylesheet" href="https://unpkg.com/leaflet@1.9.4/dist/leaflet.css" />
+ <link rel="stylesheet" href="https://unpkg.com/leaflet-draw@1.0.4/dist/leaflet.draw.css" />
+@@ -105,7 +105,7 @@
+ });
+ 
+ function loadZones() {
+-    fetch('/api/zones').then(r=>r.json()).then(data => {
++    fetch('/api/zones/full').then(r=>r.json()).then(data => {
+         const list = document.getElementById('zones-list');
+         list.innerHTML = '';
+         map.eachLayer((layer) => {
+diff -ruN a/templates/orders.html b/templates/orders.html
+--- a/templates/orders.html	2026-10-31 23:50:55.599960113 +0300
++++ b/templates/orders.html	2026-11-01 00:54:41.415912789 +0300
+@@ -1,6 +1,6 @@
+ <!DOCTYPE html>
+ <html lang="ru">
+-<head>
++<head><meta name="csrf-token" content="{{ csrf_token() }}"><script src="/static/security.js"></script>
+ <meta charset="UTF-8">
+ <meta name="viewport" content="width=device-width, initial-scale=1.0">
+ <title>Все заказы — Креветка</title>
+diff -ruN a/templates/public_site.html b/templates/public_site.html
+--- a/templates/public_site.html	2026-10-31 23:50:55.603960113 +0300
++++ b/templates/public_site.html	2026-11-01 00:54:41.415912789 +0300
+@@ -1,4 +1,4 @@
+-<!DOCTYPE html><html lang="ru"><head><meta charset="UTF-8"><meta name="viewport" content="width=device-width, initial-scale=1.0">
++<!DOCTYPE html><html lang="ru"><head><meta name="csrf-token" content="{{ csrf_token() }}"><script src="/static/security.js"></script><meta charset="UTF-8"><meta name="viewport" content="width=device-width, initial-scale=1.0">
+ <title>{{ brand.brand_name }} — Доставка</title>
+ <link rel="manifest" href="/manifest.json">
+ <meta name="theme-color" content="#ff7a00">
+@@ -139,7 +139,8 @@
+         if(sel) {
+             zones.forEach(z => {
+                 const opt = document.createElement('option');
+-                opt.value = z.price;
++                opt.value = z.name;
++                opt.dataset.price = z.price;
+                 opt.textContent = z.name + ' (+' + z.price + ' ₽)';
+                 sel.appendChild(opt);
+             });
+@@ -231,7 +232,8 @@
+     }
+     
+     const zSel = document.getElementById('site_zone');
+-    let zonePrice = zSel ? parseInt(zSel.value) || 0 : 0;
++    const zOpt = (zSel && zSel.selectedOptions.length) ? zSel.selectedOptions[0] : null;
++    let zonePrice = (zOpt && zOpt.dataset.price) ? (parseInt(zOpt.dataset.price, 10) || 0) : 0;
+     total += zonePrice;
+     document.getElementById('total').innerText = total + ' ₽';
+ }
+@@ -263,6 +265,14 @@
+     const delivery_type = document.getElementById('delivery_type').value;
+     if(!phone) return alert('Укажите ваш телефон!');
+     if(delivery_type === 'доставка' && !address) return alert('Укажите адрес доставки!');
++    const zoneSel = document.getElementById('site_zone');
++    const zone = (delivery_type === 'доставка' && zoneSel) ? zoneSel.value : '';
++    if(delivery_type === 'доставка' && !zone) return alert('Выберите район доставки!');
++    let requestId = sessionStorage.getItem('order_request_id');
++    if(!requestId){
++        requestId = (window.crypto && crypto.randomUUID) ? crypto.randomUUID() : (String(Date.now()) + Math.random().toString(16).slice(2));
++        sessionStorage.setItem('order_request_id', requestId);
++    }
+     const pay_method = document.getElementById('payment_method').value;
+     let change_from = 0;
+     if(pay_method === 'наличные'){
+@@ -279,11 +289,14 @@
+             promo_code: currentPromo.code,
+             payment_method: pay_method,
+             change_from: change_from,
+-            delivery_type: delivery_type
++            delivery_type: delivery_type,
++            zone: zone,
++            client_request_id: requestId
+         })
+     }).then(r=>r.json()).then(d=>{
+         if(d.success){
+-            window.location.href = '/track/' + d.order_id;
++            sessionStorage.removeItem('order_request_id');
++            window.location.href = d.track_url || ('/track/' + d.order_id);
+         } else {
+             alert(d.error || 'Ошибка при оформлении');
+         }
+diff -ruN a/templates/rate.html b/templates/rate.html
+--- a/templates/rate.html	2026-10-31 02:50:55.431953125 +0300
++++ b/templates/rate.html	2026-11-01 00:54:41.415912789 +0300
+@@ -1,4 +1,4 @@
+-<!DOCTYPE html><html lang="ru"><head><meta charset="UTF-8"><meta name="viewport" content="width=device-width, initial-scale=1.0">
++<!DOCTYPE html><html lang="ru"><head><meta name="csrf-token" content="{{ csrf_token() }}"><script src="/static/security.js"></script><meta charset="UTF-8"><meta name="viewport" content="width=device-width, initial-scale=1.0">
+ <title>Оцените заказ — Креветка</title>
+ <style>
+ body{font-family:-apple-system,sans-serif;background:#0a0a0a;color:#fff;margin:0;display:flex;align-items:center;justify-content:center;height:100vh}
+diff -ruN a/templates/receipt.html b/templates/receipt.html
+--- a/templates/receipt.html	2026-10-31 02:59:10.051947007 +0300
++++ b/templates/receipt.html	2026-11-01 00:54:41.415912789 +0300
+@@ -1,5 +1,5 @@
+ <!DOCTYPE html>
+-<html lang="ru"><head><meta charset="UTF-8"><title>Чек #{{ order.id }}</title>
++<html lang="ru"><head><meta name="csrf-token" content="{{ csrf_token() }}"><script src="/static/security.js"></script><meta charset="UTF-8"><title>Чек #{{ order.id }}</title>
+ <style>
+ body { font-family: monospace; width: 300px; margin: 0 auto; padding: 15px; color: #000; background: #fff; font-size: 13px; }
+ .center { text-align: center; }
+diff -ruN a/templates/reports.html b/templates/reports.html
+--- a/templates/reports.html	2026-10-31 02:50:55.439953125 +0300
++++ b/templates/reports.html	2026-11-01 00:54:41.419912789 +0300
+@@ -1,4 +1,4 @@
+-<!DOCTYPE html><html lang="ru"><head><meta charset="UTF-8"><title>Отчёты</title>
++<!DOCTYPE html><html lang="ru"><head><meta name="csrf-token" content="{{ csrf_token() }}"><script src="/static/security.js"></script><meta charset="UTF-8"><title>Отчёты</title>
+ <style>
+ body{font-family:-apple-system,sans-serif;background:#121212;color:#fff;margin:0;padding:30px}
+ h1{color:#0a84ff}table{width:100%;border-collapse:collapse;margin-top:20px}
+@@ -8,9 +8,9 @@
+ </head><body>
+ <h1>📊 Z-Отчеты</h1><a href="/admin">← Назад</a>
+ <table>
+-<tr><th>Смена</th><th>Открыта</th><th>Закрыта</th><th>Выручка</th><th>Нал</th><th>Карта</th></tr>
++<tr><th>Смена</th><th>Открыта</th><th>Закрыта</th><th>Выручка</th><th>Нал</th><th>Карта</th><th>Размен/инкассация</th><th>В кассе</th></tr>
+ {% for s in shifts %}
+ <tr><td>#{{ s.id }}</td><td>{{ s.opened_at }}</td><td>{{ s.closed_at or '—' }}</td>
+-<td style="color:#30d158;font-weight:bold">{{ s.total_revenue }} ₽</td><td>{{ s.total_cash }} ₽</td><td>{{ s.total_card }} ₽</td></tr>
++<td style="color:#30d158;font-weight:bold">{{ s.total_revenue }} ₽</td><td>{{ s.total_cash }} ₽</td><td>{{ s.total_card }} ₽</td><td>{{ s.cash_ops or 0 }} ₽</td><td><b>{{ (s.total_cash or 0) + (s.cash_ops or 0) }} ₽</b></td></tr>
+ {% endfor %}
+ </table></body></html>
+diff -ruN a/templates/ticket.html b/templates/ticket.html
+--- a/templates/ticket.html	2026-10-31 02:42:11.015959612 +0300
++++ b/templates/ticket.html	2026-11-01 00:54:41.415912789 +0300
+@@ -1,5 +1,5 @@
+ <!DOCTYPE html>
+-<html lang="ru"><head><meta charset="UTF-8"><title>Встречка #{{ order.id }}</title>
++<html lang="ru"><head><meta name="csrf-token" content="{{ csrf_token() }}"><script src="/static/security.js"></script><meta charset="UTF-8"><title>Встречка #{{ order.id }}</title>
+ <style>
+ body { font-family: monospace; width: 300px; margin: 0 auto; padding: 10px; color: #000; background: #fff; }
+ .center { text-align: center; }
+diff -ruN a/templates/track.html b/templates/track.html
+--- a/templates/track.html	2026-10-31 02:50:55.435953125 +0300
++++ b/templates/track.html	2026-11-01 00:54:41.415912789 +0300
+@@ -1,4 +1,4 @@
+-<!DOCTYPE html><html lang="ru"><head><meta charset="UTF-8"><meta name="viewport" content="width=device-width, initial-scale=1.0">
++<!DOCTYPE html><html lang="ru"><head><meta name="csrf-token" content="{{ csrf_token() }}"><script src="/static/security.js"></script><meta charset="UTF-8"><meta name="viewport" content="width=device-width, initial-scale=1.0">
+ <title>Отслеживание заказа — Креветка</title>
+ <style>
+ body{font-family:-apple-system,sans-serif;background:#0a0a0a;color:#fff;margin:0;display:flex;align-items:center;justify-content:center;height:100vh}
+@@ -26,6 +26,7 @@
+ </div>
+ <script>
+ const orderId = {{ order_id }};
++const orderToken = {{ token|tojson }};
+ let lastStatus = null;
+ 
+ // Запрос разрешения на Push-уведомления
+@@ -34,7 +35,7 @@
+ }
+ 
+ function updateStatus(){
+-    fetch('/api/track_order/' + orderId).then(r=>r.json()).then(data=>{
++    fetch('/api/track_order/' + orderId + '?t=' + encodeURIComponent(orderToken)).then(r=>r.json()).then(data=>{
+         if(data.error) return;
+         const st = data.status;
+         
+diff -ruN a/templates/warehouse.html b/templates/warehouse.html
+--- a/templates/warehouse.html	2026-10-31 23:34:59.735971937 +0300
++++ b/templates/warehouse.html	2026-11-01 00:54:41.415912789 +0300
+@@ -1,4 +1,4 @@
+-<!DOCTYPE html><html lang="ru"><head><meta charset="UTF-8">
++<!DOCTYPE html><html lang="ru"><head><meta name="csrf-token" content="{{ csrf_token() }}"><script src="/static/security.js"></script><meta charset="UTF-8">
+ <title>Склад и Цех Заготовок PRO — {{ brand.brand_name }}</title>
+ <link rel="stylesheet" href="/static/pro_style.css">
+ <style>
