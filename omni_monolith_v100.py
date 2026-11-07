@@ -537,6 +537,10 @@ def register_omni_monolith_v100(app, g):
     # =========================================================================
     @app.route("/shop")
     def route_monolith_shop():
+        tpl_path = os.path.expanduser("~/my-apps/sushi_pos/templates/public_site.html")
+        if os.path.exists(tpl_path):
+            with open(tpl_path, "r", encoding="utf-8") as tf:
+                return Response(tf.read(), mimetype="text/html")
         html = """<!DOCTYPE html>
 <html lang="ru">
 <head>
@@ -772,3 +776,14 @@ document.addEventListener('DOMContentLoaded', loadCatalog);
 </body>
 </html>"""
         return Response(html, mimetype="text/html")
+
+
+    @app.route("/public_site")
+    @app.route("/site")
+    @app.route("/menu_online")
+    def route_unified_public_site_alias():
+        tpl_path = os.path.expanduser("~/my-apps/sushi_pos/templates/public_site.html")
+        if os.path.exists(tpl_path):
+            with open(tpl_path, "r", encoding="utf-8") as tf:
+                return Response(tf.read(), mimetype="text/html")
+        return route_monolith_shop()

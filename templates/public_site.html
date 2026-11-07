@@ -1,711 +1,399 @@
-<!DOCTYPE html><html lang="ru"><head><meta charset="UTF-8">
-<meta name="viewport" content="width=device-width, initial-scale=1.0">
-<title>{{ brand_name }} — Доставка роллов в {{ brand_city }}</title>
-<link rel="manifest" href="/manifest.json">
+<!DOCTYPE html>
+<html lang="ru">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, maximum-scale=1">
+<title>КРЕВЕТКА • Официальный сайт доставки роллов (г. Инта)</title>
 <style>
-* { box-sizing: border-box; }
-body { margin:0; padding:0 !important; background:#09090b; color:#fafafa; }
+  :root {
+    --bg: #090c12;
+    --surface: #121722;
+    --elevated: #19202e;
+    --border: rgba(148, 163, 184, 0.16);
+    --accent: #ea580c;
+    --emerald: #10b981;
+    --blue: #38bdf8;
+    --text: #f8fafc;
+    --muted: #94a3b8;
+  }
+  * { box-sizing: border-box; }
+  body {
+    margin: 0;
+    background: var(--bg);
+    color: var(--text);
+    font-family: 'Inter', -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif;
+    padding-bottom: 80px;
+    -webkit-font-smoothing: antialiased;
+  }
+  .site-header {
+    background: rgba(18, 23, 34, 0.95);
+    backdrop-filter: blur(10px);
+    border-bottom: 1px solid var(--border);
+    padding: 14px 22px;
+    position: sticky;
+    top: 0;
+    z-index: 1000;
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+    flex-wrap: wrap;
+    gap: 12px;
+  }
+  .brand-wrap { display: flex; align-items: center; gap: 12px; }
+  .brand-logo {
+    width: 42px; height: 42px; border-radius: 10px;
+    background: linear-gradient(135deg, #ea580c, #f97316);
+    display: flex; align-items: center; justify-content: center;
+    font-size: 22px; box-shadow: 0 4px 14px rgba(234, 88, 12, 0.35);
+  }
+  .cat-strip {
+    max-width: 1320px;
+    margin: 0 auto;
+    padding: 14px 20px 6px;
+    display: flex;
+    gap: 8px;
+    overflow-x: auto;
+    align-items: center;
+  }
+  .cat-btn {
+    background: var(--surface);
+    color: #cbd5e1;
+    border: 1px solid var(--border);
+    padding: 8px 16px;
+    border-radius: 8px;
+    font-size: 13px;
+    font-weight: 700;
+    cursor: pointer;
+    white-space: nowrap;
+    transition: all 0.14s ease;
+  }
+  .cat-btn:hover { border-color: rgba(255,255,255,0.3); color: #fff; }
+  .cat-btn.active { background: var(--accent); color: #fff; border-color: var(--accent); }
 
-/* ---------- Шапка витрины ---------- */
-.site-header {
-    position:sticky; top:0; z-index:40;
-    background:rgba(9,9,11,0.88); backdrop-filter:blur(16px);
-    border-bottom:1px solid #27272a;
-}
-.site-header-inner {
-    max-width:1240px; margin:0 auto; padding:11px 20px;
-    display:flex; align-items:center; gap:14px;
-}
-.logo { display:flex; align-items:center; gap:10px; text-decoration:none; color:#fafafa; }
-.logo-mark {
-    width:38px; height:38px; border-radius:11px; flex:0 0 auto;
-    display:flex; align-items:center; justify-content:center; font-size:19px;
-    background:linear-gradient(145deg,#ff8a2a,#ff4d00);
-    box-shadow:0 8px 20px rgba(255,105,0,0.28);
-}
-.logo b { display:block; font-size:16px; font-weight:800; letter-spacing:0.04em; line-height:1.1; }
-.logo small { display:block; margin-top:2px; color:#a1a1aa; font-size:10.5px; font-weight:600; letter-spacing:0.06em; text-transform:uppercase; }
-.header-meta { margin-left:auto; display:flex; align-items:center; gap:14px; font-size:12px; color:#a1a1aa; }
-.header-meta a { color:#d4d4d8; text-decoration:none; font-weight:600; }
-.header-meta a:hover { color:#ff8533; }
-.status-pill {
-    display:inline-flex; align-items:center; gap:7px; height:30px; padding:0 11px;
-    border-radius:999px; font-size:11.5px; font-weight:700; white-space:nowrap;
-    background:rgba(22,163,74,0.1); border:1px solid rgba(22,163,74,0.4); color:#4ade80;
-}
-.status-pill.closed { background:rgba(220,38,38,0.1); border-color:rgba(220,38,38,0.4); color:#f87171; }
-.status-pill .dot { width:7px; height:7px; border-radius:50%; background:currentColor; }
-.shop-label { color:#71717a; font-size:11px; text-transform:uppercase; letter-spacing:0.06em; }
-
-/* ---------- Дропдаун «Сервис» ---------- */
-.menu-drop { position:relative; display:inline-flex; }
-.menu-drop summary {
-    list-style:none; user-select:none;
-    display:inline-flex; align-items:center; gap:6px;
-    height:30px; padding:0 11px; border-radius:7px;
-    background:#18181b; border:1px solid #27272a;
-    color:#d4d4d8; font-size:12px; font-weight:600; cursor:pointer;
-    transition:background .14s ease, border-color .14s ease;
-}
-.menu-drop summary::-webkit-details-marker { display:none; }
-.menu-drop summary:hover { background:#202024; border-color:#3f3f46; color:#fafafa; }
-.menu-drop[open] summary { background:rgba(255,105,0,.14); border-color:rgba(255,105,0,.45); color:#ff8a2a; }
-.menu-drop .chev { font-size:9px; color:#71717a; transition:transform .15s ease; }
-.menu-drop[open] .chev { transform:rotate(180deg); color:#ff8a2a; }
-#service-menu .drop-panel {
-    position:absolute; right:0; left:auto; top:calc(100% + 8px); z-index:120;
-    min-width:212px; padding:7px; display:grid; gap:2px; align-content:start;
-    background:#16161a; border:1px solid #3f3f46; border-radius:12px;
-    box-shadow:0 26px 60px rgba(0,0,0,.6);
-    animation:drop-in .14s ease;
-}
-@keyframes drop-in { from { opacity:0; transform:translateY(-5px); } to { opacity:1; transform:none; } }
-#service-menu .drop-item {
-    display:flex; align-items:center; gap:9px;
-    padding:8px 11px; border-radius:8px;
-    color:#d4d4d8; font-size:12.5px; font-weight:600; text-decoration:none; white-space:nowrap;
-}
-#service-menu .drop-item:hover { background:#1f1f23; color:#fafafa; }
-.drop-sep { border-top:1px solid #27272a; margin:5px 4px; }
-@media (max-width:520px) {
-    #service-menu .drop-panel { right:-40px; }
-}
-
-/* ---------- Герой ---------- */
-.hero {
-    position:relative; overflow:hidden;
-    border-bottom:1px solid #27272a;
-    background:
-        radial-gradient(900px 320px at 12% -20%, rgba(255,105,0,0.18), transparent 62%),
-        radial-gradient(700px 260px at 92% -10%, rgba(255,105,0,0.09), transparent 60%),
-        #09090b;
-}
-.hero-inner { max-width:1240px; margin:0 auto; padding:36px 20px 32px; }
-.hero-eyebrow {
-    display:inline-flex; align-items:center; gap:6px; margin-bottom:12px;
-    color:#ff8533; font-size:11px; font-weight:800; letter-spacing:0.12em; text-transform:uppercase;
-}
-.hero h1 {
-    margin:0; max-width:760px;
-    font-size:clamp(28px, 4vw, 44px); line-height:1.08; letter-spacing:-0.02em; font-weight:800;
-}
-.hero h1 span { color:#ff6900; }
-.hero p { margin:12px 0 0; max-width:620px; color:#a1a1aa; font-size:14px; line-height:1.55; }
-.hero-badges { display:flex; gap:8px; flex-wrap:wrap; margin-top:18px; }
-.hero-badge {
-    display:inline-flex; align-items:center; gap:7px;
-    height:32px; padding:0 12px; border-radius:999px;
-    background:#121215; border:1px solid #27272a; color:#d4d4d8;
-    font-size:12px; font-weight:600;
-}
-.hero-badge b { color:#fafafa; }
-
-/* ---------- Раскладка ---------- */
-.layout {
-    max-width:1240px; margin:0 auto; padding:24px 20px 60px;
-    display:flex; gap:22px; align-items:flex-start;
-}
-.menu-col { flex:1 1 auto; min-width:0; }
-
-.menu-tools { margin-bottom:16px; }
-.menu-search {
-    position:relative; margin-bottom:10px;
-}
-.menu-search input {
-    width:100% !important; height:42px !important; padding:0 14px 0 38px !important;
-    font-size:13.5px !important; border-radius:9px !important;
-}
-.menu-search .ico { position:absolute; left:13px; top:50%; transform:translateY(-50%); color:#71717a; font-size:14px; }
-.cat-row { display:flex; gap:6px; overflow-x:auto; padding-bottom:2px; scrollbar-width:none; }
-.cat-row::-webkit-scrollbar { display:none; }
-.cat-chip {
-    flex:0 0 auto; height:34px; padding:0 14px; border-radius:999px; cursor:pointer;
-    background:#121215; border:1px solid #27272a; color:#a1a1aa;
-    font-size:12.5px; font-weight:600; transition:0.14s ease;
-}
-.cat-chip:hover { color:#fafafa; border-color:#3f3f46; }
-.cat-chip.active { background:#ff6900; border-color:#ff6900; color:#fff; }
-
-.section-head { display:flex; align-items:baseline; justify-content:space-between; gap:10px; margin:4px 0 12px; }
-.section-head h2 { margin:0; font-size:16px; font-weight:800; letter-spacing:-0.01em; }
-.section-head span { color:#71717a; font-size:12px; }
-
-.menu-grid { display:grid; grid-template-columns:repeat(auto-fill, minmax(212px, 1fr)); gap:14px; }
-.menu-card {
-    background:#121215; border:1px solid #27272a; border-radius:12px; overflow:hidden;
-    display:flex; flex-direction:column;
-    transition:transform 0.16s ease, border-color 0.16s ease, box-shadow 0.16s ease;
-}
-.menu-card:hover { transform:translateY(-3px); border-color:#3f3f46; box-shadow:0 16px 34px rgba(0,0,0,0.4); }
-.card-media { position:relative; height:152px; background:#0c0c0f; overflow:hidden; flex:0 0 auto; }
-.card-media::before {
-    content:""; position:absolute; inset:0;
-    background:linear-gradient(100deg,#141417 30%,#1e1e22 50%,#141417 70%);
-    background-size:220% 100%;
-    animation:media-shimmer 1.3s linear infinite;
-}
-.card-media img { position:relative; z-index:1; width:100%; height:100%; object-fit:cover; display:block; transition:transform 0.3s ease; }
-@keyframes media-shimmer { from { background-position:180% 0; } to { background-position:-80% 0; } }
-.card-media.empty::before { display:none; }
-.menu-card:hover .card-media img { transform:scale(1.05); }
-.card-media.empty { display:flex; align-items:center; justify-content:center; font-size:30px; color:#3f3f46; }
-.card-badge {
-    position:absolute; top:8px; left:8px; padding:3px 7px; border-radius:5px;
-    background:rgba(9,9,11,0.82); border:1px solid #3f3f46; color:#d4d4d8;
-    font-size:10px; font-weight:700; backdrop-filter:blur(4px);
-}
-.card-body { padding:12px 13px 13px; display:flex; flex-direction:column; gap:8px; flex:1; }
-.card-body h3 { margin:0; font-size:14.5px; font-weight:700; line-height:1.3; letter-spacing:-0.01em; }
-.card-comp { color:#71717a; font-size:11.5px; line-height:1.45; min-height:33px; }
-.card-foot { display:flex; align-items:center; justify-content:space-between; gap:8px; margin-top:auto; }
-.card-price { font-size:18px; font-weight:800; color:#ff6900; font-variant-numeric:tabular-nums; }
-.card-add { height:34px; padding:0 12px; border-radius:7px; }
-
-/* ---------- Корзина ---------- */
-.cart-panel {
-    flex:0 0 352px; width:352px; position:sticky; top:76px;
-    background:#121215; border:1px solid #27272a; border-radius:12px; overflow:hidden;
-    box-shadow:0 18px 40px rgba(0,0,0,0.25);
-}
-.cart-head {
-    display:flex; align-items:center; justify-content:space-between; gap:10px;
-    padding:13px 16px; border-bottom:1px solid #27272a;
-    background:#141417;
-}
-.cart-head-title { display:flex; align-items:center; gap:8px; font-size:14px; font-weight:800; letter-spacing:0.01em; }
-.cart-count {
-    display:inline-flex; align-items:center; justify-content:center; min-width:20px; height:20px;
-    padding:0 6px; border-radius:999px; background:#ff6900; color:#fff; font-size:11px; font-weight:800;
-}
-.cart-head-total { display:none; align-items:center; gap:8px; font-size:15px; font-weight:800; color:#ff6900; }
-.cart-chev { color:#71717a; font-size:11px; transition:transform .2s ease; }
-.cart-panel.open .cart-chev { transform:rotate(180deg); }
-.cart-body { padding:13px 16px 4px; max-height:calc(100vh - 210px); overflow-y:auto; }
-
-.cart-empty {
-    display:flex; flex-direction:column; align-items:center; gap:5px;
-    padding:26px 12px; text-align:center; color:#71717a;
-}
-.cart-empty .ico {
-    width:50px; height:50px; border-radius:15px; background:#18181b; border:1px solid #27272a;
-    display:flex; align-items:center; justify-content:center; font-size:22px; margin-bottom:4px;
-}
-.cart-empty b { color:#d4d4d8; font-size:13px; }
-.cart-empty span { font-size:11.5px; line-height:1.5; max-width:230px; }
-
-.cart-row { padding:10px 0; border-bottom:1px solid #27272a; }
-.cart-row:first-child { padding-top:0; }
-.cart-row-main { display:flex; justify-content:space-between; gap:10px; }
-.cart-row-name { font-size:13px; font-weight:650; line-height:1.35; }
-.cart-row-price { font-size:13px; font-weight:800; color:#ff6900; white-space:nowrap; font-variant-numeric:tabular-nums; }
-.cart-row-controls { display:flex; align-items:center; justify-content:space-between; margin-top:7px; }
-.qty-box { display:flex; align-items:center; gap:2px; background:#0d0d10; border:1px solid #27272a; border-radius:6px; padding:1px; }
-.qty-box button {
-    width:26px; height:26px; border:0; border-radius:4px; background:transparent; color:#d4d4d8;
-    font-size:15px; font-weight:700; cursor:pointer; line-height:1;
-}
-.qty-box button:hover { background:#27272a; color:#fff; }
-.qty-box span { min-width:26px; text-align:center; font-size:12.5px; font-weight:700; }
-.cart-remove { background:none; border:0; color:#71717a; font-size:11px; font-weight:600; cursor:pointer; padding:4px; border-radius:4px; }
-.cart-remove:hover { color:#f87171; background:rgba(239,68,68,0.08); }
-
-.cart-field { margin:8px 0; }
-.cart-field input, .cart-field select { width:100% !important; height:38px !important; font-size:12.5px !important; }
-.cart-field label { display:block; margin:0 0 4px; color:#a1a1aa; font-size:10.5px; font-weight:700; text-transform:uppercase; letter-spacing:0.05em; }
-.cart-note {
-    display:none; margin:6px 0 8px; padding:8px 10px; border-radius:7px;
-    background:rgba(16,185,129,0.1); border:1px solid rgba(16,185,129,0.3);
-    color:#86efac; font-size:11.5px; line-height:1.45;
-}
-.promo-row { display:flex; gap:6px; }
-.promo-row input { flex:1; text-transform:uppercase; }
-.promo-row .quick-chip { height:38px; padding:0 12px; }
-
-.cart-foot { padding:11px 16px 14px; border-top:1px solid #27272a; background:#141417; }
-.cart-total { display:flex; align-items:baseline; justify-content:space-between; gap:10px; margin-bottom:8px; }
-.cart-total span { color:#a1a1aa; font-size:11px; font-weight:700; text-transform:uppercase; letter-spacing:0.06em; }
-.cart-total b { font-size:24px; font-weight:800; color:#ff6900; line-height:1; font-variant-numeric:tabular-nums; }
-.cart-submit { width:100%; height:46px; font-size:14px; border-radius:8px; }
-.cart-foot small { display:block; margin-top:7px; color:#71717a; font-size:10.5px; text-align:center; line-height:1.4; }
-
-/* ---------- Мобильная корзина ---------- */
-@media (max-width: 900px) {
-    .layout { display:block; padding:16px 14px 90px; }
-    .site-header-inner { padding:9px 14px; }
-    .header-meta .meta-extra { display:none; }
-    .hero-inner { padding:26px 14px 24px; }
-    .menu-grid { grid-template-columns:repeat(auto-fill, minmax(160px, 1fr)); gap:10px; }
-    .card-media { height:126px; }
-    .card-body { padding:10px; }
-    .card-body h3 { font-size:13px; }
-    .card-comp { display:none; }
-    .card-price { font-size:16px; }
-    .card-add { height:30px; padding:0 10px; font-size:12px; }
-
-    .cart-panel {
-        position:fixed; left:0; right:0; bottom:0; top:auto; width:auto; flex:none;
-        border-radius:14px 14px 0 0; border-bottom:0; z-index:60;
-        transform:translateY(calc(100% - 58px));
-        transition:transform 0.24s ease; box-shadow:0 -20px 50px rgba(0,0,0,0.6);
-        max-height:90vh; display:flex; flex-direction:column;
-    }
-    .cart-panel.open { transform:translateY(0); }
-    .cart-head { height:58px; flex:0 0 58px; cursor:pointer; }
-    .cart-head-total { display:flex; }
-    .cart-body { flex:1 1 auto; max-height:none; min-height:0; }
-    .cart-foot { flex:0 0 auto; padding-bottom:calc(14px + env(safe-area-inset-bottom)); }
-    .status-pill { display:none; }
-}
-@media (max-width: 520px) {
-    .hero h1 { font-size:27px; }
-    .header-meta .meta-phone { display:none; }
-    .cart-panel { max-height:92vh; }
-}
-
-/* ---------- Поля ввода: оранжевый фокус (специфичность выше инжект-темы) ---------- */
-.layout .menu-search input:focus,
-.cart-panel .cart-field input:focus,
-.cart-panel .cart-field select:focus,
-.cart-panel .promo-row input:focus {
-    outline:none !important;
-    border-color:rgba(255,105,0,.55) !important;
-    box-shadow:0 0 0 3px rgba(255,105,0,.14) !important;
-}
-.menu-search input, .cart-field input, .cart-field select, .promo-row input { transition:border-color .14s ease, box-shadow .14s ease; }
-
-/* ---------- Кнопки: глубина и отклик (специфичность выше инжект-темы) ---------- */
-.menu-grid .menu-card .btn-add.card-add,
-.cart-panel .cart-foot .btn-submit.cart-submit,
-.cart-panel .promo-row .quick-chip {
-    background:linear-gradient(135deg,#ff8a2a,#ff4d00) !important;
-    border:0 !important;
-    box-shadow:0 10px 22px rgba(255,105,0,.26) !important;
-    font-weight:800 !important;
-    border-radius:8px !important;
-    transition:transform .15s ease, box-shadow .15s ease, filter .15s ease !important;
-}
-.menu-grid .menu-card .btn-add.card-add:hover,
-.cart-panel .cart-foot .btn-submit.cart-submit:hover,
-.cart-panel .promo-row .quick-chip:hover {
-    transform:translateY(-1px);
-    filter:brightness(1.06);
-    box-shadow:0 14px 28px rgba(255,105,0,.34) !important;
-}
-.menu-grid .menu-card .btn-add.card-add:active,
-.cart-panel .cart-foot .btn-submit.cart-submit:active,
-.cart-panel .promo-row .quick-chip:active { transform:scale(.97) !important; }
-.qty-box button:active { transform:scale(.9); }
-.cat-chip.active { box-shadow:0 6px 16px rgba(255,105,0,.35); }
-
-/* ---------- Мелкие акценты ---------- */
-::selection { background:rgba(255,105,0,.35); color:#fff; }
-html { scroll-behavior:smooth; }
-.menu-card { border-radius:13px; }
-.cart-panel { border-radius:14px; }
-#service-menu .drop-panel { backdrop-filter:blur(12px); background:rgba(22,22,26,.94); }
-.card-badge { border-color:rgba(255,255,255,.08); background:rgba(9,9,11,.78); }
-.cart-body { scrollbar-width:thin; scrollbar-color:#3f3f46 transparent; }
-.cart-body::-webkit-scrollbar { width:5px; }
-.cart-body::-webkit-scrollbar-thumb { background:#3f3f46; border-radius:4px; }
-.cart-remove { transition:color .13s ease, background .13s ease; }
-.qty-box { transition:border-color .14s ease; }
-.qty-box:hover { border-color:#3f3f46; }
-#client-active-order-bar { animation:bar-in .22s ease; }
-@keyframes bar-in { from { opacity:0; transform:translateY(-6px); } to { opacity:1; transform:none; } }
-
-/* ---------- Мягкая подсветка фона ---------- */
-body {
-    background:
-        radial-gradient(1100px 460px at 18% -12%, rgba(255,105,0,.06), transparent 55%),
-        #09090b;
-}
-</style></head><body>
-
-<div id="client-active-order-bar" style="display:none; background:#18181b; border-bottom:1px solid #ff6900; padding:10px 20px; text-align:center; font-size:13px; font-weight:600;">
-    <span id="client-active-order-text">У вас есть активный заказ</span>
-    <a id="client-active-order-link" href="/track/1" style="color:#ff6900; margin-left:12px; text-decoration:underline; font-weight:700;">Отследить статус →</a>
-</div>
+  .main-container {
+    max-width: 1320px;
+    margin: 0 auto;
+    padding: 14px 20px;
+    display: grid;
+    grid-template-columns: 1fr 390px;
+    gap: 22px;
+  }
+  @media (max-width: 980px) {
+    .main-container { grid-template-columns: 1fr; }
+  }
+  .catalog-grid {
+    display: grid;
+    grid-template-columns: repeat(auto-fill, minmax(240px, 1fr));
+    gap: 16px;
+  }
+  .product-card {
+    background: var(--surface);
+    border: 1px solid var(--border);
+    border-radius: 12px;
+    overflow: hidden;
+    display: flex;
+    flex-direction: column;
+    justify-content: space-between;
+    transition: transform 0.15s ease, border-color 0.15s ease;
+  }
+  .product-card:hover {
+    transform: translateY(-2px);
+    border-color: rgba(234, 88, 12, 0.55);
+  }
+  .product-img {
+    width: 100%;
+    height: 165px;
+    object-fit: cover;
+    background: #161c2a;
+  }
+  .product-body {
+    padding: 14px;
+    display: flex;
+    flex-direction: column;
+    flex: 1;
+    justify-content: space-between;
+  }
+  .cart-panel {
+    background: var(--surface);
+    border: 1px solid var(--border);
+    border-radius: 14px;
+    padding: 18px;
+    position: sticky;
+    top: 84px;
+    height: fit-content;
+    box-shadow: 0 12px 32px rgba(0, 0, 0, 0.4);
+  }
+  .inp {
+    width: 100%;
+    background: var(--elevated);
+    color: var(--text);
+    border: 1px solid rgba(148, 163, 184, 0.25);
+    border-radius: 8px;
+    padding: 10px 12px;
+    font-size: 13px;
+    margin-bottom: 10px;
+  }
+  .inp:focus { outline: none; border-color: var(--accent); }
+  .btn-order {
+    width: 100%;
+    background: var(--emerald);
+    color: #042f1e;
+    font-weight: 900;
+    border: none;
+    border-radius: 9px;
+    padding: 13px;
+    font-size: 14px;
+    cursor: pointer;
+    transition: opacity 0.15s;
+  }
+  .btn-order:hover { opacity: 0.92; }
+  .pill {
+    font-size: 11px;
+    font-weight: 700;
+    padding: 3px 8px;
+    border-radius: 6px;
+    background: rgba(255,255,255,0.06);
+  }
+</style>
+</head>
+<body>
 
 <header class="site-header">
-    <div class="site-header-inner">
-        <a class="logo" href="/site">
-            <span class="logo-mark">🍣</span>
-            <span>
-                <b>{{ brand_name }}</b>
-                <small>{{ brand_city }} · доставка суши</small>
-            </span>
-        </a>
-        <div class="header-meta">
-            <span class="meta-extra">🕒 Ежедневно 10:00–21:30</span>
-            <a class="meta-phone" href="tel:{{ brand_phone|replace(' ', '')|replace('(', '')|replace(')', '')|replace('-', '') }}">📞 {{ brand_phone }}</a>
-            {% if shop_open %}
-            <span class="status-pill"><span class="dot"></span> Принимаем заказы</span>
-            {% else %}
-            <span class="status-pill closed"><span class="dot"></span> Приём заказов закрыт</span>
-            {% endif %}
-            <details class="menu-drop" id="service-menu">
-                <summary aria-label="Меню сервиса">Сервис<span class="chev">▾</span></summary>
-                <div class="drop-panel">
-                    <a class="drop-item" href="#site-grid">🍣 Меню и корзина</a>
-                    <a class="drop-item" id="service-track-link" href="/track" style="display:none;">🔎 Отследить заказ</a>
-                </div>
-            </details>
-        </div>
+  <div class="brand-wrap">
+    <div class="brand-logo">🍤</div>
+    <div>
+      <div style="font-size:18px; font-weight:900; letter-spacing:0.2px;">КРЕВЕТКА • ДОСТАВКА СУШИ И РОЛЛОВ</div>
+      <div style="font-size:12px; color:var(--muted);">г. Инта • Стандарт порции: <b>8 крупных кусочков</b> • Кэшбэк 5% бонусами</div>
     </div>
+  </div>
+  <div style="display:flex; gap:10px; align-items:center;">
+    <input type="search" id="pub-search" placeholder="Поиск ролла или сета..." oninput="renderCatalog()" style="background:#19202e; color:#fff; border:1px solid var(--border); border-radius:8px; padding:7px 12px; font-size:12px; width:210px;">
+    <a href="/" style="color:var(--muted); font-size:12px; text-decoration:none; border:1px solid var(--border); padding:7px 12px; border-radius:8px; font-weight:600;">Терминал Кассы</a>
+  </div>
 </header>
 
-<section class="hero">
-    <div class="hero-inner">
-        <div class="hero-eyebrow">🚚 Доставка по Инте · от 45 минут</div>
-        <h1>Свежие роллы и сеты <span>с доставкой домой</span></h1>
-        <p>Готовим после вашего заказа. Оплата картой, наличными или переводом — как удобно.</p>
-        <div class="hero-badges">
-            <span class="hero-badge">🍣 <b>8 кусочков</b> в ролле</span>
-            <span class="hero-badge">💳 Карта · наличные · СБП</span>
-            <span class="hero-badge">🎁 Бонусы за повторные заказы</span>
-        </div>
-    </div>
-</section>
+<div class="cat-strip" id="pub-cats"></div>
 
-<div class="layout">
-    <div class="menu-col">
-        <div class="menu-tools">
-            <div class="menu-search">
-                <span class="ico">🔍</span>
-                <input type="text" id="site-search" placeholder="Найти ролл: Филадельфия, Лава, Дракон…" oninput="filterSiteMenu()">
-            </div>
-            <div class="cat-row" id="site-cats">
-                <button class="cat-chip active" onclick="selectSiteCat('all', this)">Всё меню</button>
-                {% for cat in categories if cat.category != 'Дополнительно' %}<button class="cat-chip" onclick="selectSiteCat('{{ cat.category }}', this)">{{ cat.category }}</button>{% endfor %}{% for cat in categories if cat.category == 'Дополнительно' %}<button class="cat-chip" onclick="selectSiteCat('{{ cat.category }}', this)">{{ cat.category }}</button>{% endfor %}
-            </div>
-        </div>
+<main class="main-container">
+  <section>
+    <div class="catalog-grid" id="pub-grid"></div>
+  </section>
 
-        <div class="section-head">
-            <h2>Меню</h2>
-            <span>{{ menu|length }} позиций</span>
-        </div>
-
-        {% macro site_card(item) %}
-        <div class="menu-card" data-cat="{{ item.category }}" data-name="{{ item.name|lower }} {{ (item.composition or '')|lower }}">
-            <div class="card-media {% if not item.image %}empty{% endif %}">
-                {% if item.image %}
-                <img src="/static/uploads/{{ item.image }}" alt="{{ item.name }}" loading="lazy">
-                {% else %}🍣{% endif %}
-                {% if item.category == 'Роллы' %}<span class="card-badge">8 шт.</span>{% endif %}
-            </div>
-            <div class="card-body">
-                <h3>{{ item.name }}</h3>
-                {% if item.composition %}<div class="card-comp">{{ item.composition }}</div>{% endif %}
-                <div class="card-foot">
-                    <span class="card-price">{{ item.price }} ₽</span>
-                    <button class="btn-add card-add" onclick="addToCart({{ item.id }}, '{{ item.name|replace("'", "\\\\'") }}', {{ item.price }})">В корзину</button>
-                </div>
-            </div>
-        </div>
-        {% endmacro %}
-
-        <div class="menu-grid" id="site-grid">
-            {% for item in menu if item.category != 'Дополнительно' %}{{ site_card(item) }}{% endfor %}
-            {% for item in menu if item.category == 'Дополнительно' %}{{ site_card(item) }}{% endfor %}
-        </div>
+  <aside class="cart-panel">
+    <div style="display:flex; justify-content:space-between; align-items:center; margin-bottom:12px; padding-bottom:10px; border-bottom:1px solid var(--border);">
+      <span style="font-size:15px; font-weight:800;">🛒 Ваш заказ</span>
+      <span class="pill" style="color:var(--emerald); border:1px solid rgba(16,185,129,0.35);">Прямая связь с KDS</span>
     </div>
 
-    <aside class="cart-panel" id="cart-panel">
-        <div class="cart-head" onclick="toggleCartSheet()">
-            <div class="cart-head-title">🛒 Ваш заказ <span class="cart-count" id="cart-count">0</span></div>
-            <div class="cart-head-total"><span id="mobile-total">0 ₽</span><span class="cart-chev">▲</span></div>
-        </div>
+    <div id="pub-cart-items" style="font-size:13px; color:var(--muted); margin-bottom:14px;">Добавьте роллы или сеты из меню слева</div>
 
-        <div class="cart-body">
-            <div id="cart-items"></div>
+    <div style="font-size:11px; font-weight:700; color:var(--muted); margin-bottom:4px;">КОНТАКТЫ И АДРЕС В Г. ИНТА</div>
+    <input type="tel" id="pub-phone" class="inp" placeholder="Ваш телефон (+7 904 ...)" oninput="updateDeliveryZone()">
+    <select id="pub-dtype" class="inp" onchange="updateDeliveryZone()">
+      <option value="доставка">🛵 Доставка курьером до двери</option>
+      <option value="самовывоз">🏃 Самовывоз из цеха (Бесплатно • 20 мин)</option>
+    </select>
+    <input type="text" id="pub-addr" class="inp" placeholder="Улица, дом, кв. (напр. Куратова 10 кв 4)" oninput="updateDeliveryZone()">
+    <input type="text" id="pub-comm" class="inp" placeholder="Пожелания к заказу (количество персон, домофон)">
 
-            <div class="cart-field">
-                <label for="phone">Телефон</label>
-                <input id="phone" type="tel" inputmode="tel" placeholder="+7 (999) 000-00-00" oninput="checkProfile()">
-            </div>
-            <div id="client-greeting" class="cart-note"></div>
+    <div id="pub-zone-box" style="background:#161d2b; border:1px solid var(--border); border-radius:8px; padding:10px 12px; font-size:12px; margin-bottom:14px; color:#cbd5e1;">
+      📍 Введите улицу в Инте для автоматического расчёта тарифа и времени доставки
+    </div>
 
-            <div class="cart-field">
-                <label for="delivery_type">Как получите</label>
-                <select id="delivery_type" onchange="toggleSiteAddress()">
-                    <option value="доставка">🚚 Доставка курьером</option>
-                    <option value="самовывоз">🏃 Самовывоз · {{ brand_address }}</option>
-                </select>
-            </div>
+    <div style="display:flex; justify-content:space-between; align-items:center; font-size:18px; font-weight:900; margin-bottom:14px;">
+      <span>К оплате:</span>
+      <span id="pub-total" style="color:var(--emerald);">0 ₽</span>
+    </div>
 
-            <div class="cart-field" id="zone-field">
-                <label for="delivery_zone">Район</label>
-                <select id="delivery_zone" onchange="calcTotal()">
-                    {% for z in zones %}
-                    <option value="{{ z.id }}" data-fee="{{ z.price }}">{{ z.name }} — {{ z.price }} ₽</option>
-                    {% else %}
-                    <option value="0" data-fee="0">г. Инта — центр (0 ₽)</option>
-                    {% endfor %}
-                </select>
-            </div>
+    <button type="button" class="btn-order" onclick="openSbpModal()">Оплатить по СБП (QR) и отправить на кухню</button>
+  </aside>
+</main>
 
-            <div class="cart-field" id="address-field">
-                <label for="address">Адрес</label>
-                <input id="address" placeholder="Улица, дом, квартира">
-            </div>
-
-            <div class="cart-field">
-                <label for="comment">Комментарий</label>
-                <input id="comment" placeholder="Домофон, пожелания">
-            </div>
-
-            <div class="cart-field">
-                <label>Промокод</label>
-                <div class="promo-row">
-                    <input id="promo_input" placeholder="Например, SUSHI10">
-                    <button class="quick-chip" onclick="applyPromo()">Применить</button>
-                </div>
-            </div>
-            <div id="promo_msg" style="font-size:11.5px; display:none; margin:-2px 0 8px; font-weight:700;"></div>
-
-            <div class="cart-field">
-                <label for="payment_method">Оплата</label>
-                <select id="payment_method" onchange="toggleChangeInput()">
-                    <option value="карта">💳 Картой при получении</option>
-                    <option value="наличные">💵 Наличными курьеру</option>
-                </select>
-            </div>
-            <div class="cart-field" id="change-field" style="display:none;">
-                <label for="change_from">С какой купюры готовить сдачу</label>
-                <input id="change_from" type="number" inputmode="numeric" placeholder="Например, 1000">
-            </div>
-        </div>
-
-        <div class="cart-foot">
-            <div class="cart-total">
-                <span>Итого</span>
-                <b id="total">0 ₽</b>
-            </div>
-            <button class="btn-submit cart-submit" onclick="submitOrder()">Оформить доставку</button>
-            <small>Нажимая кнопку, вы соглашаетесь с обработкой данных для доставки заказа.</small>
-        </div>
-    </aside>
+<!-- Модальное окно СБП QR -->
+<div id="pub-sbp-modal" style="display:none; position:fixed; inset:0; background:rgba(0,0,0,0.85); z-index:3000; align-items:center; justify-content:center; padding:16px;">
+  <div style="background:var(--surface); border:1px solid var(--emerald); border-radius:14px; max-width:410px; width:100%; padding:22px; text-align:center;">
+    <div style="font-size:11px; font-weight:800; color:var(--blue); text-transform:uppercase;">Система Быстрых Платежей ЦБ РФ</div>
+    <h3 style="margin:6px 0 12px; font-size:17px;">Сканируйте QR-код в приложении банка</h3>
+    <div id="pub-qr-wrap" style="background:#fff; padding:12px; border-radius:10px; display:inline-block; margin-bottom:12px;"></div>
+    <div id="pub-qr-amount" style="font-size:19px; font-weight:900; color:var(--emerald); margin-bottom:6px;"></div>
+    <div style="font-size:11px; color:var(--muted); margin-bottom:14px;">После подтверждения вам сразу откроется живой трекер готовности и фискальный чек ФЧ (54-ФЗ)</div>
+    <button type="button" class="btn-order" onclick="finalizePublicOrder()">✅ Оплачено — Передать заказ повару</button>
+    <button type="button" onclick="document.getElementById('pub-sbp-modal').style.display='none'" style="margin-top:10px; background:transparent; color:var(--muted); border:none; cursor:pointer; font-size:12px;">Вернуться к корзине</button>
+  </div>
 </div>
 
 <script>
-function esc(v){return String(v==null?'':v).replace(/[&<>"']/g,function(c){return {'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c];});}
-let siteCat = 'all';
+let allDishes = [];
+let currentCat = 'Все позиции';
 let cart = [];
-let lastOrder = [];
-let currentPromo = { code: '', type: '', value: 0 };
+let calcFee = 150;
 
-function selectSiteCat(cat, btn){
-    siteCat = cat;
-    document.querySelectorAll('.cat-chip').forEach(t => t.classList.remove('active'));
-    if(btn) btn.classList.add('active');
-    filterSiteMenu();
+function initPublicSite() {
+  fetch('/api/shop/catalog')
+  .then(r => r.json())
+  .then(d => {
+    allDishes = d.items || [];
+    const cats = ['Все позиции', ...(d.categories || [])];
+    document.getElementById('pub-cats').innerHTML = cats.map(c =>
+      `<button type="button" class="cat-btn ${c===currentCat?'active':''}" onclick="setCat('${c.replace(/'/g, '')}')">${c}</button>`
+    ).join('');
+    renderCatalog();
+  });
 }
 
-function filterSiteMenu(){
-    const q = (document.getElementById('site-search').value || '').toLowerCase().trim();
-    document.querySelectorAll('#site-grid .menu-card').forEach(el => {
-        const okCat = (siteCat === 'all' || el.dataset.cat === siteCat);
-        const okQ = !q || el.dataset.name.includes(q);
-        el.style.display = (okCat && okQ) ? 'flex' : 'none';
-    });
+function setCat(c) {
+  currentCat = c;
+  document.querySelectorAll('.cat-btn').forEach(b => b.classList.toggle('active', b.textContent === c));
+  renderCatalog();
 }
 
-function addToCart(id, name, price){
-    const ex = cart.find(i => i.id === id);
-    if(ex) ex.qty++;
-    else cart.push({ id, name, price, qty: 1 });
-    renderCart();
-    pulseCart();
+function renderCatalog() {
+  const q = (document.getElementById('pub-search').value || '').trim().toLowerCase();
+  const list = allDishes.filter(it => {
+    const matchCat = (currentCat === 'Все позиции') || (it.category === currentCat);
+    const matchQ = !q || it.name.toLowerCase().includes(q) || (it.description || '').toLowerCase().includes(q);
+    return matchCat && matchQ;
+  });
+
+  document.getElementById('pub-grid').innerHTML = list.map(it => {
+    const media = it.image
+      ? `<img src="${it.image}" class="product-img" alt="${it.name}">`
+      : `<div class="product-img" style="display:flex;align-items:center;justify-content:center;font-size:40px;">🍣</div>`;
+    return `
+      <div class="product-card">
+        ${media}
+        <div class="product-body">
+          <div>
+            <div style="display:flex; justify-content:space-between; align-items:center; margin-bottom:6px;">
+              <span class="pill" style="color:#cbd5e1;">${it.category}</span>
+              <span class="pill" style="color:var(--blue);">8 шт.</span>
+            </div>
+            <div style="font-size:15px; font-weight:800; margin-bottom:4px;">${it.name}</div>
+            <div style="font-size:12px; color:var(--muted); line-height:1.4;">${it.description}</div>
+          </div>
+          <div style="display:flex; justify-content:space-between; align-items:center; margin-top:14px; padding-top:10px; border-top:1px solid var(--border);">
+            <span style="font-size:17px; font-weight:900;">${it.price} ₽</span>
+            <button type="button" onclick="addCartItem(${it.id})" style="background:var(--accent); color:#fff; border:none; border-radius:7px; padding:7px 14px; font-size:12px; font-weight:800; cursor:pointer;">+ В корзину</button>
+          </div>
+        </div>
+      </div>
+    `;
+  }).join('');
 }
 
-function pulseCart(){
-    const panel = document.getElementById('cart-panel');
-    panel.animate(
-        [{ transform: panel.classList.contains('open') ? 'translateY(0)' : 'translateY(calc(100% - 58px))', filter: 'brightness(1.25)' },
-         { transform: panel.classList.contains('open') ? 'translateY(0)' : 'translateY(calc(100% - 58px))', filter: 'brightness(1)' }],
-        { duration: 260, easing: 'ease-out' }
-    );
+function addCartItem(id) {
+  const item = allDishes.find(x => x.id === id);
+  if (!item) return;
+  const ex = cart.find(x => x.id === id);
+  if (ex) ex.qty++;
+  else cart.push({ id: item.id, name: item.name, price: item.price, qty: 1 });
+  renderCart();
+  updateDeliveryZone();
 }
 
-function changeQty(idx, delta){
-    cart[idx].qty += delta;
-    if(cart[idx].qty <= 0) cart.splice(idx, 1);
-    renderCart();
+function modCartQty(id, d) {
+  const ex = cart.find(x => x.id === id);
+  if (!ex) return;
+  ex.qty += d;
+  if (ex.qty <= 0) cart = cart.filter(x => x.id !== id);
+  renderCart();
+  updateDeliveryZone();
 }
 
-function removeFromCart(idx){
-    cart.splice(idx, 1);
-    renderCart();
+function renderCart() {
+  const box = document.getElementById('pub-cart-items');
+  if (!cart.length) {
+    box.innerHTML = 'Добавьте роллы или сеты из меню слева';
+    document.getElementById('pub-total').textContent = '0 ₽';
+    return;
+  }
+  box.innerHTML = cart.map(it => `
+    <div style="display:flex; justify-content:space-between; align-items:center; padding:7px 0; border-bottom:1px solid var(--border);">
+      <div>
+        <div style="font-weight:700; color:var(--text);">${it.name} <span style="font-size:11px; color:var(--blue);">(8 шт.)</span></div>
+        <div style="font-size:11px; color:var(--muted);">${it.price} ₽ × ${it.qty} = ${it.price * it.qty} ₽</div>
+      </div>
+      <div style="display:flex; align-items:center; gap:6px;">
+        <button type="button" onclick="modCartQty(${it.id}, -1)" style="width:24px;height:24px;border-radius:6px;border:1px solid var(--border);background:var(--elevated);color:#fff;cursor:pointer;">-</button>
+        <b style="color:var(--text); min-width:16px; text-align:center;">${it.qty}</b>
+        <button type="button" onclick="modCartQty(${it.id}, 1)" style="width:24px;height:24px;border-radius:6px;border:none;background:var(--accent);color:#fff;cursor:pointer;">+</button>
+      </div>
+    </div>
+  `).join('');
 }
 
-function renderCart(){
-    const c = document.getElementById('cart-items');
-    if(cart.length === 0){
-        c.innerHTML = `<div class="cart-empty">
-            <div class="ico">🛒</div>
-            <b>Корзина пока пуста</b>
-            <span>Добавьте роллы или сеты — и оформите заказ за пару минут.</span>
-        </div>`;
+function updateDeliveryZone() {
+  const sub = cart.reduce((s, x) => s + x.price * x.qty, 0);
+  const dtype = document.getElementById('pub-dtype').value;
+  const addr = document.getElementById('pub-addr').value;
+  const phone = document.getElementById('pub-phone').value;
+
+  if (dtype === 'самовывоз') {
+    calcFee = 0;
+    document.getElementById('pub-zone-box').innerHTML = '🏃 <b>Самовывоз из цеха г. Инта</b> • Доставка 0 ₽ • Готовность ~20 мин';
+    document.getElementById('pub-total').textContent = sub + ' ₽';
+    return;
+  }
+
+  fetch(`/api/shop/check_address_and_bonus?address=${encodeURIComponent(addr)}&phone=${encodeURIComponent(phone)}&subtotal=${sub}`)
+  .then(r => r.json())
+  .then(d => {
+    calcFee = d.actual_fee;
+    const feeTxt = d.actual_fee === 0 ? '<b style="color:var(--emerald);">БЕСПЛАТНО</b>' : `<b>${d.actual_fee} ₽</b> (бесплатно от ${d.free_from} ₽)`;
+    const bonusLine = d.bonus_balance > 0 ? `<div style="margin-top:4px; color:#fbbf24;">🎁 Доступно бонусов по номеру: <b>${d.bonus_balance} ₽</b></div>` : '';
+    document.getElementById('pub-zone-box').innerHTML = `📍 Район: <b>${d.zone_name}</b> • Доставка: ${feeTxt} • SLA: <b>~${d.sla_min} мин</b>${bonusLine}`;
+    document.getElementById('pub-total').textContent = (sub + calcFee) + ' ₽';
+  });
+}
+
+function openSbpModal() {
+  if (!cart.length) { alert('Выберите роллы в меню!'); return; }
+  const phone = document.getElementById('pub-phone').value.trim();
+  const dtype = document.getElementById('pub-dtype').value;
+  const addr = document.getElementById('pub-addr').value.trim();
+  if (!phone) { alert('Укажите ваш контактный телефон!'); return; }
+  if (dtype === 'доставка' && !addr) { alert('Укажите адрес доставки в г. Инта!'); return; }
+
+  const sub = cart.reduce((s, x) => s + x.price * x.qty, 0);
+  const total = sub + (dtype === 'самовывоз' ? 0 : calcFee);
+  const qrData = `https://qr.nspk.ru/AS10003KREVETKAINTA?type=02&bank=100000000111&sum=${total*100}&cur=RUB`;
+  document.getElementById('pub-qr-wrap').innerHTML = `<img src="https://api.qrserver.com/v1/create-qr-code/?size=190x190&data=${encodeURIComponent(qrData)}" width="190" height="190" alt="СБП QR">`;
+  document.getElementById('pub-qr-amount').textContent = `Сумма к оплате: ${total} ₽`;
+  document.getElementById('pub-sbp-modal').style.display = 'flex';
+}
+
+function finalizePublicOrder() {
+  const payload = {
+    phone: document.getElementById('pub-phone').value.trim(),
+    delivery_type: document.getElementById('pub-dtype').value,
+    address: document.getElementById('pub-addr').value.trim() || 'Самовывоз',
+    comment: document.getElementById('pub-comm').value.trim(),
+    payment_method: 'СБП QR (Онлайн-сайт)',
+    items: cart
+  };
+  fetch('/api/shop/checkout', {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify(payload)
+  })
+  .then(r => r.json())
+  .then(d => {
+    if (d.success && d.order_id) {
+      // Гарантированно проставляем штамп «✅ ФЧ» в заказе через ядро HYPERION
+      fetch('/api/hyperion/punch_fch', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ order_id: d.order_id })
+      }).finally(() => {
+        window.location.href = d.tracker_url || ('/live/' + d.order_id);
+      });
     } else {
-        c.innerHTML = cart.map((it, idx) => `
-            <div class="cart-row">
-                <div class="cart-row-main">
-                    <span class="cart-row-name">${esc(it.name)}</span>
-                    <span class="cart-row-price">${it.price * it.qty} ₽</span>
-                </div>
-                <div class="cart-row-controls">
-                    <div class="qty-box">
-                        <button type="button" onclick="changeQty(${idx}, -1)" aria-label="Убрать одну">−</button>
-                        <span>${it.qty}</span>
-                        <button type="button" onclick="changeQty(${idx}, 1)" aria-label="Добавить одну">+</button>
-                    </div>
-                    <button type="button" class="cart-remove" onclick="removeFromCart(${idx})">Удалить</button>
-                </div>
-            </div>`).join('');
+      alert(d.error || 'Не удалось создать заказ');
     }
-    calcTotal();
+  });
 }
 
-function toggleCartSheet(force){
-    const panel = document.getElementById('cart-panel');
-    const open = typeof force === 'boolean' ? force : !panel.classList.contains('open');
-    panel.classList.toggle('open', open);
-}
-
-function checkProfile(){
-    const phone = document.getElementById('phone').value.trim();
-    if(phone.length < 6) return;
-    fetch('/api/site/client/' + encodeURIComponent(phone)).then(r => r.json()).then(d => {
-        const box = document.getElementById('client-greeting');
-        if(d.success){
-            if(d.address && !document.getElementById('address').value) document.getElementById('address').value = d.address;
-            lastOrder = d.last_order || [];
-            box.style.display = 'block';
-            box.innerHTML = `<div style="display:flex; justify-content:space-between; align-items:center; gap:8px;">
-                <span>👋 Рады видеть снова! Адрес подставлен.</span>
-                ${lastOrder.length > 0 ? `<button class="quick-chip" onclick="repeatLastOrder()" style="height:26px; font-size:11px;">Повторить</button>` : ''}
-            </div>`;
-        } else {
-            box.style.display = 'none';
-        }
-    }).catch(() => {});
-}
-
-function repeatLastOrder(){
-    if(!lastOrder.length) return;
-    cart = lastOrder.map(i => ({ id: i.menu_id || i.id, name: i.name, price: i.price, qty: i.qty }));
-    renderCart();
-    toggleCartSheet(false);
-}
-
-function toggleSiteAddress(){
-    const isSelf = document.getElementById('delivery_type').value === 'самовывоз';
-    document.getElementById('address-field').style.display = isSelf ? 'none' : 'block';
-    document.getElementById('zone-field').style.display = isSelf ? 'none' : 'block';
-    calcTotal();
-}
-
-function toggleChangeInput(){
-    document.getElementById('change-field').style.display =
-        document.getElementById('payment_method').value === 'наличные' ? 'block' : 'none';
-}
-
-function applyPromo(){
-    const code = document.getElementById('promo_input').value.trim().toUpperCase();
-    const msg = document.getElementById('promo_msg');
-    if(!code) return;
-    fetch('/api/check_promo', {method:'POST', headers:{'Content-Type':'application/json'}, body:JSON.stringify({code})})
-    .then(r => r.json()).then(d => {
-        if(d.success){
-            currentPromo = { code, type: d.type, value: d.value };
-            msg.style.display = 'block'; msg.style.color = '#4ade80';
-            msg.innerText = '✓ Промокод активирован';
-            calcTotal();
-        } else {
-            currentPromo = { code: '', type: '', value: 0 };
-            msg.style.display = 'block'; msg.style.color = '#f87171';
-            msg.innerText = '✕ ' + d.error;
-            calcTotal();
-        }
-    }).catch(() => {});
-}
-
-function calcTotal(){
-    const sub = cart.reduce((s, i) => s + i.price * i.qty, 0);
-    let total = sub;
-    if(currentPromo.code){
-        const disc = currentPromo.type === 'percent'
-            ? Math.round(sub * currentPromo.value / 100)
-            : currentPromo.value;
-        total = Math.max(0, total - disc);
-    }
-    if(document.getElementById('delivery_type').value === 'доставка' && sub > 0){
-        const zSel = document.getElementById('delivery_zone');
-        total += parseInt(zSel?.selectedOptions?.[0]?.dataset?.fee || 0);
-    }
-    const count = cart.reduce((s, i) => s + i.qty, 0);
-    document.getElementById('total').innerText = total + ' ₽';
-    document.getElementById('mobile-total').innerText = total + ' ₽';
-    document.getElementById('cart-count').innerText = count;
-}
-
-function submitOrder(){
-    if(cart.length === 0){
-        toggleCartSheet(true);
-        return alert('Добавьте роллы в корзину!');
-    }
-    const phone = document.getElementById('phone').value.trim();
-    const delivery_type = document.getElementById('delivery_type').value;
-    const address = document.getElementById('address').value.trim();
-    if(!phone) return alert('Укажите ваш телефон!');
-    if(delivery_type === 'доставка' && !address) return alert('Укажите адрес доставки в г. Инта!');
-    const zSel = document.getElementById('delivery_zone');
-    const delivery_price = delivery_type === 'доставка' ? parseInt(zSel?.selectedOptions?.[0]?.dataset?.fee || 0) : 0;
-    const delivery_zone_id = delivery_type === 'доставка' ? parseInt(zSel?.value || 0) : 0;
-
-    fetch('/api/public_order', {
-        method:'POST', headers:{'Content-Type':'application/json'},
-        body:JSON.stringify({
-            items: cart, phone, address, delivery_type, delivery_price, delivery_zone_id,
-            comment: document.getElementById('comment').value,
-            promo_code: currentPromo.code,
-            payment_method: document.getElementById('payment_method').value,
-            change_from: parseInt(document.getElementById('change_from').value) || 0
-        })
-    }).then(r => r.json()).then(d => {
-        if(d.success){
-            localStorage.setItem('krevetka_last_order_id', d.order_id);
-            window.location.href = '/track/' + d.order_id;
-        } else alert(d.error || 'Ошибка оформления заказа');
-    });
-}
-
-function showActiveOrderBar(){
-    const savedOrdId = localStorage.getItem('krevetka_last_order_id');
-    if(!savedOrdId) return;
-    const tl = document.getElementById('service-track-link');
-    if(tl){ tl.style.display = 'flex'; tl.href = '/track/' + savedOrdId; }
-    fetch('/api/track_order/' + savedOrdId).then(r => r.json()).then(d => {
-        const done = !d || !d.status || d.status === 'done' || d.status === 'cancelled';
-        if(done && tl) tl.style.display = 'none';
-        if(d && d.status && !done){
-            document.getElementById('client-active-order-bar').style.display = 'block';
-            document.getElementById('client-active-order-text').innerText = `Ваш заказ #${savedOrdId} на сумму ${d.total} ₽ в работе`;
-            document.getElementById('client-active-order-link').href = '/track/' + savedOrdId;
-        }
-    }).catch(() => {});
-}
-
-/* Дропдаун «Сервис»: закрытие по клику вне меню и по Escape */
-(function(){
-    const drop = document.getElementById('service-menu');
-    if(!drop) return;
-    drop.addEventListener('click', e => { if(e.target.closest('a')) drop.removeAttribute('open'); });
-    document.addEventListener('click', e => { if(drop.open && !drop.contains(e.target)) drop.removeAttribute('open'); });
-    document.addEventListener('keydown', e => { if(e.key === 'Escape' && drop.open) drop.removeAttribute('open'); });
-})();
-
-renderCart();
-showActiveOrderBar();
+document.addEventListener('DOMContentLoaded', initPublicSite);
 </script>
-</body></html>
+</body>
+</html>
