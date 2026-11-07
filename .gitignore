@@ -1,0 +1,11 @@
+__pycache__/
+*.py[cod]
+*$py.class
+venv/
+.env
+server.log
+tunnel.log
+*.log
+backups/
+*.db-shm
+*.db-wal
