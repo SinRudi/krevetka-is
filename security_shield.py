@@ -223,7 +223,7 @@ def init_security_shield(app, get_db):
         response.headers["Referrer-Policy"] = "strict-origin-when-cross-origin"
         response.headers["Permissions-Policy"] = "geolocation=(), camera=(), microphone=()"
         response.headers["X-XSS-Protection"] = "1; mode=block"
-        response.headers["Content-Security-Policy"] = "frame-ancestors 'self'; default-src 'self'; img-src 'self' data: https:; script-src 'self' 'unsafe-inline'; style-src 'self' 'unsafe-inline'"
+        response.headers["Content-Security-Policy"] = "frame-ancestors 'self'; default-src 'self'; img-src 'self' data: https:; script-src 'self' 'unsafe-inline'; style-src 'self' 'unsafe-inline' https://fonts.googleapis.com; font-src 'self' data: https://fonts.gstatic.com"
         response.headers["Cache-Control"] = "no-store, no-cache, must-revalidate, max-age=0"
 
         if response.content_type and response.content_type.startswith("text/html"):

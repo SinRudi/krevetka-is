@@ -1,348 +1,417 @@
-<!DOCTYPE html>
-<html lang="ru">
-<head>
-<meta charset="UTF-8">
+<!DOCTYPE html><html lang="ru"><head><meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
 <title>Бухгалтерия: Белая и Управленческая — КРЕВЕТКА IS</title>
 <style>
-body { margin: 0; padding: 20px 28px; }
-.acc-contours-grid {
-    display: grid;
-    grid-template-columns: repeat(3, 1fr);
-    gap: 16px;
-    margin-bottom: 20px;
+/* ==== Бухгалтерия v2 (стиль нового инструмента) — функции сохранены 1:1 ==== */
+:root {
+    --bg: #09090b; --panel: #121215; --card: #18181b; --input: #0c0c0f;
+    --text: #fafafa; --muted: #a1a1aa; --border: #27272a;
+    --accent: #ff6900; --accent-2: #ff8a2a; --green: #16a34a; --yellow: #eab308;
+    --red: #dc2626; --blue: #38bdf8; --radius: 14px; --shadow: 0 18px 50px rgba(0,0,0,.35);
 }
-@media(max-width: 1100px) { .acc-contours-grid { grid-template-columns: 1fr; } }
+* { box-sizing: border-box; }
+body { margin:0; color:var(--text); font-family:'Inter',-apple-system,BlinkMacSystemFont,'Segoe UI',sans-serif; font-variant-numeric:tabular-nums; }
+a { color:inherit; text-decoration:none; }
+button, input, select, textarea { font:inherit; }
+button { cursor:pointer; }
+::selection { background:rgba(255,105,0,.35); color:#fff; }
 
+.wrap-wide { width:min(1500px, calc(100% - 24px)); margin:0 auto; padding:18px 0 40px; }
+@media(max-width:640px){ .wrap-wide { width:calc(100% - 20px); } }
+
+/* --- hero --- */
+.admin-hero { display:flex; align-items:center; gap:13px; flex-wrap:wrap; margin-bottom:16px; }
+.admin-hero .mark {
+    width:44px; height:44px; flex:0 0 auto; border-radius:12px; display:grid; place-items:center;
+    font-size:20px; background:linear-gradient(145deg,var(--accent-2),#ff4d00);
+    box-shadow:0 10px 26px rgba(255,105,0,.3);
+}
+.admin-hero h1 { margin:0; font-size:22px; letter-spacing:-.03em; font-weight:850; }
+.admin-hero p { margin:2px 0 0; color:var(--muted); font-size:12px; }
+.admin-actions { margin-left:auto; display:flex; align-items:center; gap:7px; flex-wrap:wrap; }
+
+/* --- панели / метрики --- */
+.panel {
+    background:linear-gradient(180deg, rgba(24,24,27,.98), rgba(18,18,21,.98));
+    border:1px solid var(--border); border-radius:14px; box-shadow:var(--shadow);
+    margin-bottom:14px;
+}
+.panel-head {
+    display:flex; flex-wrap:wrap; align-items:center; justify-content:space-between; gap:8px;
+    padding:13px 16px; border-bottom:1px solid var(--border);
+}
+.panel-head h2 { margin:0; font-size:14.5px; letter-spacing:-.01em; font-weight:800; }
+.panel-head .cap { margin:2px 0 0; color:var(--muted); font-size:11px; }
+.panel-body { padding:16px; }
+.stat-grid { display:grid; grid-template-columns:repeat(auto-fit,minmax(190px,1fr)); gap:10px; margin-bottom:14px; }
+.stat-card {
+    position:relative; overflow:hidden; padding:15px 16px; margin:0;
+    border-radius:13px; border:1px solid var(--border);
+    background:linear-gradient(160deg, rgba(255,105,0,.055), rgba(24,24,27,.95) 45%);
+}
+.stat-card::after { content:""; position:absolute; inset:0 0 auto; height:1px; background:linear-gradient(90deg, transparent, rgba(255,105,0,.25), transparent); }
+.stat-card .s-ico { position:absolute; right:-12px; top:-14px; font-size:54px; opacity:.18; pointer-events:none; }
+.stat-card span { display:block; color:var(--muted); font-size:10px; font-weight:800; text-transform:uppercase; letter-spacing:.06em; }
+.stat-card b { display:block; margin-top:4px; font-size:24px; letter-spacing:-.035em; }
+.stat-card small { color:var(--muted); font-size:11px; }
+.admin-grid { display:grid; grid-template-columns:minmax(0,1.35fr) minmax(0,1fr); gap:14px; align-items:start; }
+@media(max-width:1100px){ .admin-grid { grid-template-columns:1fr; } }
+.grid-3 { display:grid; grid-template-columns:repeat(3, 1fr); gap:14px; margin-bottom:14px; }
+@media(max-width:1100px){ .grid-3 { grid-template-columns:1fr; } }
+
+/* --- контуры бухгалтерии --- */
 .contour-card {
-    background: #121215;
-    border: 1px solid #27272a;
-    border-radius: 8px;
-    padding: 18px;
-    display: flex;
-    flex-direction: column;
-    gap: 9px;
+    background:linear-gradient(180deg, rgba(24,24,27,.98), rgba(18,18,21,.98));
+    border:1px solid var(--border); border-radius:14px; box-shadow:var(--shadow);
+    padding:16px; display:flex; flex-direction:column; gap:8px;
 }
-.contour-card.white-box { border-top: 3px solid #0ea5e9; }
-.contour-card.mgmt-box { border-top: 3px solid #f59e0b; }
-.contour-card.total-box { border-top: 3px solid #16a34a; }
+.contour-card.white-box { border-top:3px solid var(--blue); }
+.contour-card.mgmt-box { border-top:3px solid #f59e0b; }
+.contour-card.total-box { border-top:3px solid var(--green); }
+.contour-header { display:flex; justify-content:space-between; align-items:center; gap:8px; flex-wrap:wrap; border-bottom:1px solid var(--border); padding-bottom:10px; margin-bottom:4px; }
+.contour-title { font-size:12.5px; font-weight:800; text-transform:uppercase; letter-spacing:.04em; }
+.metric-row { display:flex; justify-content:space-between; gap:10px; font-size:12.5px; color:var(--muted); flex-wrap:wrap; }
+.metric-row b { color:var(--text); font-size:12.5px; font-weight:700; }
+.metric-big { display:flex; justify-content:space-between; align-items:baseline; padding-top:10px; border-top:1px dashed var(--border); margin-top:4px; flex-wrap:wrap; gap:6px; }
+.metric-big-val { font-size:24px; font-weight:800; letter-spacing:-.03em; }
+.contour-foot { font-size:12px; color:var(--muted); display:flex; justify-content:space-between; gap:10px; flex-wrap:wrap; }
 
-.contour-header {
-    display: flex;
-    justify-content: space-between;
-    align-items: center;
-    border-bottom: 1px solid #27272a;
-    padding-bottom: 10px;
+/* --- таблицы --- */
+.table-wrap { overflow-x:auto; border:1px solid var(--border); border-radius:11px; background:rgba(12,12,15,.8); }
+table { width:100%; border-collapse:collapse; font-size:12px; }
+th {
+    text-align:left; padding:10px 12px; color:var(--muted); font-size:9.5px;
+    text-transform:uppercase; letter-spacing:.07em;
+    border-bottom:1px solid var(--border); background:rgba(24,24,27,.95); white-space:nowrap;
 }
-.contour-title { font-size: 13px; font-weight: 800; text-transform: uppercase; letter-spacing: 0.04em; }
-.metric-row { display: flex; justify-content: space-between; font-size: 13px; color: #a1a1aa; }
-.metric-row b { color: #fafafa; font-size: 13px; }
-.metric-big {
-    display: flex;
-    justify-content: space-between;
-    align-items: baseline;
-    padding-top: 10px;
-    border-top: 1px dashed #27272a;
-    margin-top: 4px;
-}
-.metric-big-val { font-size: 24px; font-weight: 800; }
+td { padding:10px 12px; border-bottom:1px solid rgba(39,39,42,.55); vertical-align:middle; }
+tr:last-child td { border-bottom:0; }
+tbody tr:hover { background:rgba(255,255,255,.025); }
+.t-money { font-variant-numeric:tabular-nums; white-space:nowrap; }
+.hint-row td { color:var(--muted); font-size:12px; padding:16px 12px; }
 
-.two-panels {
-    display: grid;
-    grid-template-columns: 1.35fr 1fr;
-    gap: 20px;
-    align-items: start;
+/* --- кнопки/бейджи (перекрывают инжект-тему) --- */
+.kbtn {
+    display:inline-flex; align-items:center; justify-content:center; gap:7px;
+    min-height:38px; padding:0 15px; border-radius:9px; border:1px solid var(--border);
+    background:var(--card) !important; color:var(--text) !important;
+    font-size:13px; font-weight:750; box-shadow:none !important;
+    transition:transform .12s ease, background .12s ease, border-color .12s ease !important;
 }
-@media(max-width: 1100px) { .two-panels { grid-template-columns: 1fr; } }
+.kbtn:hover { background:#202024 !important; border-color:#3f3f46 !important; color:var(--text) !important; }
+.kbtn:active { transform:scale(.98); }
+.kbtn-primary { background:var(--accent) !important; border-color:var(--accent) !important; color:#fff !important; }
+.kbtn-primary:hover { background:#ff7d1f !important; border-color:#ff7d1f !important; color:#fff !important; }
+.kbtn-green { background:var(--green) !important; border-color:var(--green) !important; color:#fff !important; }
+.kbtn-red { background:rgba(220,38,38,.12) !important; border-color:rgba(220,38,38,.4) !important; color:#f87171 !important; }
+.kbtn-ghost { background:transparent !important; }
+.kbtn-sm { min-height:30px; padding:0 10px; font-size:11.5px; border-radius:7px; }
+.badge {
+    display:inline-flex; align-items:center; gap:5px; padding:3px 8px; border-radius:999px;
+    font-size:10.5px; font-weight:800; border:1px solid var(--border);
+    background:var(--card); color:var(--muted); white-space:nowrap;
+}
+.badge-white { background:rgba(14,165,233,.14) !important; color:#38bdf8 !important; border:1px solid rgba(14,165,233,.4) !important; padding:3px 8px; border-radius:999px; font-size:10.5px; font-weight:800; white-space:nowrap; }
+.badge-mgmt { background:rgba(245,158,11,.14) !important; color:#fbbf24 !important; border:1px solid rgba(245,158,11,.4) !important; padding:3px 8px; border-radius:999px; font-size:10.5px; font-weight:800; white-space:nowrap; }
+.badge-debt { background:rgba(220,38,38,.16) !important; color:#f87171 !important; border:1px solid rgba(220,38,38,.4) !important; padding:2px 7px; border-radius:999px; font-size:10px; font-weight:800; white-space:nowrap; }
 
-/* Мобильная бухгалтерия: бейджи не наезжают на заголовки и суммы */
-@media(max-width: 640px) {
-    body { padding: 12px 12px 28px; }
-    .contour-card { padding: 14px; }
-    .contour-header { flex-wrap: wrap; gap: 6px; }
-    .contour-title { font-size: 12px; }
-    .metric-row { flex-wrap: wrap; gap: 4px 10px; }
-    .metric-big { flex-wrap: wrap; gap: 6px; align-items: flex-end; }
-    .metric-big-val { font-size: 20px; }
-    .badge-white, .badge-mgmt, .badge-debt { white-space: nowrap; }
-    .two-panels .card-panel { overflow-x: auto; }
+/* --- формы --- */
+.filter-row { display:flex; flex-wrap:wrap; gap:8px; align-items:center; }
+.filter-row span.lbl { color:var(--muted); font-size:12px; }
+.add-row {
+    display:flex; flex-wrap:wrap; gap:8px; align-items:center;
+    border:1px dashed var(--border); border-radius:11px; background:rgba(12,12,15,.5); padding:12px;
 }
+.add-row input, .add-row select, .filter-row input, .filter-row select { min-height:34px; padding:6px 10px; border-radius:8px; }
+.exp-col select, .exp-col input { min-height:34px; padding:6px 10px; border-radius:8px; }
+.exp-grid-2 { display:grid; grid-template-columns:1fr 1fr; gap:8px; }
+.exp-grid-3 { display:grid; grid-template-columns:1fr 1fr 1fr; gap:8px; }
+.exp-col input:focus, .exp-col select:focus, .add-row input:focus, .filter-row input:focus, .filter-row select:focus { border-color:var(--accent) !important; box-shadow:0 0 0 3px rgba(255,105,0,.12); outline:none !important; }
+.chip-row { display:flex; gap:6px; flex-wrap:wrap; }
+strong.k { color:var(--accent-2); }
+@media(max-width:640px){
+    .wrap-wide { padding:12px 0 32px; }
+    .metric-big-val { font-size:20px; }
+    .exp-grid-2, .exp-grid-3 { grid-template-columns:1fr; }
+}
+</style></head><body>
+<div class="wrap-wide">
 
-.badge-white {
-    background: rgba(14, 165, 233, 0.14);
-    color: #38bdf8;
-    border: 1px solid rgba(14, 165, 233, 0.4);
-    padding: 3px 8px;
-    border-radius: 4px;
-    font-size: 11px;
-    font-weight: 700;
-}
-.badge-mgmt {
-    background: rgba(245, 158, 11, 0.14);
-    color: #fbbf24;
-    border: 1px solid rgba(245, 158, 11, 0.4);
-    padding: 3px 8px;
-    border-radius: 4px;
-    font-size: 11px;
-    font-weight: 700;
-}
-.badge-debt {
-    background: rgba(220, 38, 38, 0.16);
-    color: #f87171;
-    border: 1px solid rgba(220, 38, 38, 0.4);
-    padding: 2px 6px;
-    border-radius: 4px;
-    font-size: 10px;
-    font-weight: 700;
-}
-</style>
-</head>
-<body>
-
-<div class="page-nav-header">
-    <div class="page-nav-left">
-        <a href="/admin" class="btn-back-nav">← Назад в Управление</a>
-        <a href="/" class="btn-back-nav">← В Кассу</a>
+    <!-- HERO -->
+    <div class="admin-hero">
+        <div class="mark">🧮</div>
         <div>
-            <h1 style="margin:0; font-size:20px; font-weight:800; text-transform:uppercase;">Автоматизированная Бухгалтерия (Белая и Управленческая)</h1>
+            <h1>Бухгалтерия</h1>
+            <p>Белый и управленческий контур, ФОТ и расчёты с поставщиками — г. Инта</p>
         </div>
-    </div>
-    <div class="page-nav-right">
-        <form method="get" action="/accounting" style="display:flex; gap:8px; align-items:center; flex-wrap:wrap;">
-            <span style="font-size:12px; color:#a1a1aa;">Период:</span>
-            <input type="date" name="date_from" value="{{ date_from }}">
-            <span style="color:#71717a;">—</span>
-            <input type="date" name="date_to" value="{{ date_to }}">
-            <select name="tax_mode" title="Налоговый режим для расчёта белого налога">
-                <option value="patent" {% if tax_mode == 'patent' %}selected{% endif %}>СНО: Патент (ПСН)</option>
-                <option value="usn6" {% if tax_mode == 'usn6' %}selected{% endif %}>СНО: УСН 6% (Доходы)</option>
-                <option value="usn15" {% if tax_mode == 'usn15' %}selected{% endif %}>СНО: УСН 15% (Дох-Расх)</option>
-            </select>
-            <input type="number" step="0.1" name="acq_pct" value="{{ acq_pct }}" style="width:70px;" title="Комиссия эквайринга банка (%)">
-            <span style="font-size:12px; color:#a1a1aa;">% экв.</span>
-            <button type="submit" class="btn" style="padding:7px 14px; cursor:pointer;">Применить</button>
-            <a href="/accounting" class="quick-chip">Все даты</a>
-        </form>
-        <a href="/accounting/export?mode=white&date_from={{ date_from }}&date_to={{ date_to }}" class="quick-chip" style="border-color:#0ea5e9; color:#38bdf8;">Книга учёта БЕЛАЯ (.xlsx)</a>
-        <a href="/accounting/export?mode=all&date_from={{ date_from }}&date_to={{ date_to }}" class="quick-chip" style="border-color:#16a34a; color:#4ade80;">Управленческий P&L (.xlsx)</a>
-    </div>
-</div>
-
-<!-- ТРИ СВОДНЫХ КОНТУРА БУХГАЛТЕРИИ -->
-<div class="acc-contours-grid">
-    <!-- 1. БЕЛАЯ БУХГАЛТЕРИЯ (ФИСКАЛЬНЫЙ КОНТУР) -->
-    <div class="contour-card white-box">
-        <div class="contour-header">
-            <span class="contour-title" style="color:#38bdf8;">1. Белая бухгалтерия (Фискальная / ОФД)</span>
-            <span class="badge-white">Официальный контур</span>
-        </div>
-        <div class="metric-row"><span>Проведено чеков по ККТ:</span><b>{{ summary.white_orders_count }} шт.</b></div>
-        <div class="metric-row"><span>Безнал (Карта / СБП):</span><b>{{ summary.white_card_rev }} ₽</b></div>
-        <div class="metric-row"><span>Фискальный нал (по чеку ККТ):</span><b>{{ summary.white_cash_rev }} ₽</b></div>
-        <div class="metric-row"><span>Комиссия эквайринга ({{ acq_pct }}%):</span><b style="color:#dc2626;">-{{ summary.acquiring_fee }} ₽</b></div>
-        <div class="metric-row"><span>Официальные расходы (по счёту):</span><b style="color:#dc2626;">-{{ summary.white_expenses }} ₽</b></div>
-        <div class="metric-row"><span>Налог к уплате:</span><b style="color:#eab308;">-{{ summary.tax_amount }} ₽</b></div>
-        <div class="metric-big">
-            <span style="font-size:12px; font-weight:700; color:#a1a1aa;">БЕЛАЯ ВЫРУЧКА (ОФД):</span>
-            <span class="metric-big-val" style="color:#38bdf8;">{{ summary.white_total_rev }} ₽</span>
-        </div>
-        <div style="font-size:12px; color:#a1a1aa; display:flex; justify-content:space-between;">
-            <span>Чистый остаток на р/с:</span>
-            <b style="color:#fafafa;">{{ summary.white_net_profit }} ₽</b>
+        <div class="admin-actions">
+            <a class="kbtn kbtn-sm kbtn-ghost" href="/admin">← Управление</a>
+            <a class="kbtn kbtn-sm kbtn-ghost" href="/">← Касса</a>
         </div>
     </div>
 
-    <!-- 2. ОПЕРАЦИОННАЯ КАССА (НЕФИСКАЛЬНЫЙ УПРАВЛЕНЧЕСКИЙ НАЛ) -->
-    <div class="contour-card mgmt-box">
-        <div class="contour-header">
-            <span class="contour-title" style="color:#fbbf24;">2. Операционный нал (Без фискализации)</span>
-            <span class="badge-mgmt">Внутренний контур</span>
-        </div>
-        <div class="metric-row"><span>Нефискальных заказов за нал:</span><b>{{ summary.mgmt_orders_count }} шт.</b></div>
-        <div class="metric-row"><span>Доля в общем обороте:</span><b>{{ summary.mgmt_share_pct }}%</b></div>
-        <div class="metric-row"><span>Поступило наличными (без ККТ):</span><b>{{ summary.mgmt_cash_rev }} ₽</b></div>
-        <div class="metric-row"><span>Кассовые выдачи на смене:</span><b style="color:#dc2626;">-{{ summary.shift_cash_out }} ₽</b></div>
-        <div class="metric-row"><span>Управленческие расходы (из нала):</span><b style="color:#dc2626;">-{{ summary.mgmt_expenses }} ₽</b></div>
-        <div class="metric-row"><span>Кредиторка (Не оплачено поставщикам):</span><b style="color:#f87171;">{{ summary.unpaid_debts }} ₽</b></div>
-        <div class="metric-big">
-            <span style="font-size:12px; font-weight:700; color:#a1a1aa;">ВЫРУЧКА НАЛИЧНЫМИ (УПР.):</span>
-            <span class="metric-big-val" style="color:#fbbf24;">{{ summary.mgmt_cash_rev }} ₽</span>
-        </div>
-        <div style="font-size:12px; color:#a1a1aa; display:flex; justify-content:space-between;">
-            <span>Фактический остаток наличных:</span>
-            <b style="color:#fafafa;">{{ summary.mgmt_net_cash }} ₽</b>
-        </div>
-    </div>
-
-    <!-- 3. СВОДНАЯ УПРАВЛЕНЧЕСКАЯ БУХГАЛТЕРИЯ (100% БИЗНЕСА) -->
-    <div class="contour-card total-box">
-        <div class="contour-header">
-            <span class="contour-title" style="color:#4ade80;">3. Сводный Управленческий P&L (100%)</span>
-            <span class="roll-8-badge" style="color:#4ade80; border-color:#16a34a;">Вся экономика</span>
-        </div>
-        <div class="metric-row"><span>Всего выполненных заказов:</span><b>{{ summary.total_orders_count }} шт.</b></div>
-        <div class="metric-row"><span>Общая валовая выручка:</span><b>{{ summary.real_total_rev }} ₽</b></div>
-        <div class="metric-row"><span>Сырьё по техкартам (Food Cost):</span><b style="color:#dc2626;">-{{ summary.food_cost }} ₽ ({{ summary.food_cost_pct }}%)</b></div>
-        <div class="metric-row"><span>ФОТ + Аренда + Упаковка + Экв.:</span><b style="color:#dc2626;">-{{ summary.total_all_expenses }} ₽</b></div>
-        <div class="metric-row"><span>Реальная налоговая нагрузка:</span><b>{{ summary.effective_tax_pct }}%</b></div>
-        <div class="metric-row"><span>Резерв под неоплаченные счета:</span><b style="color:#f87171;">{{ summary.unpaid_debts }} ₽</b></div>
-        <div class="metric-big">
-            <span style="font-size:12px; font-weight:700; color:#a1a1aa;">ЧИСТАЯ ПРИБЫЛЬ (EBITDA):</span>
-            <span class="metric-big-val" style="color:#4ade80;">{{ summary.real_net_profit }} ₽</span>
-        </div>
-        <div style="font-size:12px; color:#a1a1aa; display:flex; justify-content:space-between;">
-            <span>Чистая рентабельность бизнеса:</span>
-            <b style="color:#4ade80;">{{ summary.real_margin_pct }}%</b>
-        </div>
-    </div>
-</div>
-
-<!-- НИЖНИЕ ПАНЕЛИ: РЕЕСТР ЗАКАЗОВ + УПРАВЛЕНИЕ РАСХОДАМИ И ФОТ -->
-<div class="two-panels">
-    <!-- ЛЕВАЯ КОЛОНКА: РЕЕСТР ЗАКАЗОВ -->
-    <div class="card-panel" style="padding:18px;">
-        <div style="display:flex; justify-content:space-between; align-items:center; margin-bottom:14px; flex-wrap:wrap; gap:8px;">
+    <!-- ПЕРИОД И ВЫГРУЗКИ (форма сохранена 1:1) -->
+    <div class="panel">
+        <div class="panel-head">
             <div>
-                <h3 style="margin:0; font-size:14px; text-transform:uppercase;">Распределение чеков: Белая / Управленческая</h3>
-                <p style="margin:3px 0 0; font-size:12px; color:#a1a1aa;">Безнал сразу идёт в Белую. Наличные по умолчанию учитываются в Управленческом контуре, пока не пробит фискальный чек.</p>
-            </div>
-            <div style="display:flex; gap:6px;">
-                <button type="button" class="quick-chip" onclick="filterAccOrders('all')">Все ({{ orders|length }})</button>
-                <button type="button" class="quick-chip" style="color:#38bdf8;" onclick="filterAccOrders('white')">Белая (ККТ)</button>
-                <button type="button" class="quick-chip" style="color:#fbbf24;" onclick="filterAccOrders('mgmt')">Управленческая (Нал)</button>
+                <h2>Период и выгрузки</h2>
+                <p class="cap">Налоговый режим и эквайринг влияют на расчёты белого контура</p>
             </div>
         </div>
-
-        <table id="acc-orders-table">
-            <tr>
-                <th>Заказ</th>
-                <th>Дата / Время</th>
-                <th>Оплата</th>
-                <th>Выручка</th>
-                <th>Food Cost</th>
-                <th>Контур учёта</th>
-                <th>Управление</th>
-            </tr>
-            {% for o in orders %}
-            <tr class="acc-order-row" data-contour="{{ 'white' if o.is_fiscal else 'mgmt' }}">
-                <td><b style="color:#ff6900;">#{{ o.id }}</b></td>
-                <td style="font-size:12px; color:#a1a1aa;">{{ o.created_at[:16] }}</td>
-                <td>
-                    <span class="roll-8-badge">{{ o.payment_method }}</span>
-                    {% if o.payment_method in ('микс', 'mix') %}
-                    <div style="font-size:10px; color:#a1a1aa; margin-top:2px;">Нал: {{ o.payment_cash }} / Карта: {{ o.payment_card }}</div>
-                    {% endif %}
-                </td>
-                <td style="font-weight:800;">{{ o.total }} ₽</td>
-                <td style="color:#a1a1aa;">{{ (o.cost or (o.total * 0.27))|round(0)|int }} ₽</td>
-                <td>
-                    {% if o.is_fiscal %}
-                    <span class="badge-white">БЕЛАЯ (ККТ)</span>
-                    {% else %}
-                    <span class="badge-mgmt">УПРАВЛЕНЧЕСКАЯ</span>
-                    {% endif %}
-                </td>
-                <td>
-                    <div style="display:flex; gap:5px;">
-                        <button type="button" class="quick-chip" onclick="toggleOrderFiscal({{ o.id }})">
-                            {% if o.is_fiscal %}В управленческую{% else %}В белую (ККТ){% endif %}
-                        </button>
-                        <a href="/fiscal/{{ o.id }}" target="_blank" class="quick-chip">Чек</a>
-                    </div>
-                </td>
-            </tr>
-            {% endfor %}
-        </table>
-    </div>
-
-    <!-- ПРАВАЯ КОЛОНКА: БЫСТРЫЙ РАСЧЁТ ФОТ СМЕНЫ + РАСХОДЫ И ПОСТАВЩИКИ -->
-    <div>
-        <!-- БЛОК 1: АВТО-КАЛЬКУЛЯТОР ФОТ СМЕНЫ (ПОВАР / КУРЬЕР) -->
-        <div class="card-panel" style="padding:16px; margin-bottom:16px; border-color:#3f3f46!important;">
-            <h3 style="margin:0 0 10px 0; font-size:13px; text-transform:uppercase; color:#4ade80;">Быстрое начисление зарплаты за смену (ФОТ)</h3>
-            <div style="display:flex; gap:6px; flex-wrap:wrap; margin-bottom:10px;">
-                <button type="button" class="quick-chip" onclick="fillPayroll('Зарплата (ФОТ)', 3500, 'Смена повара (фиксированная ставка)')">+ Смена повара (3500 ₽)</button>
-                <button type="button" class="quick-chip" onclick="fillPayroll('Зарплата (ФОТ)', 2000, 'Смена кассира-администратора')">+ Смена кассира (2000 ₽)</button>
-                <button type="button" class="quick-chip" onclick="fillPayroll('Выплата курьерам', {{ summary.total_orders_count * 150 }}, 'Оплата курьеру за доставленные заказы')">+ Курьер по заказам ({{ summary.total_orders_count * 150 }} ₽)</button>
-            </div>
-
-            <h3 style="margin:12px 0 10px 0; font-size:13px; text-transform:uppercase; color:#ff6900;">Добавить расход или счёт от поставщика</h3>
-            <form method="post" action="/accounting/expense/add" id="exp-form" style="display:flex; flex-direction:column; gap:8px;">
-                <div style="display:grid; grid-template-columns:1fr 1fr; gap:8px;">
-                    <select name="contour" required>
-                        <option value="black">Управленческий контур (Нал без ККТ)</option>
-                        <option value="white">Белый контур (Официально по счёту)</option>
-                    </select>
-                    <select name="category" id="exp-cat" required>
-                        <option value="Закуп продуктов">Закуп продуктов (Рыба/Рис/Сыр)</option>
-                        <option value="Зарплата (ФОТ)">Зарплата кухни и кассы (ФОТ)</option>
-                        <option value="Выплата курьерам">Выплата курьерам</option>
-                        <option value="Упаковка и хозтовары">Упаковка, палочки, ланч-боксы</option>
-                        <option value="Аренда помещения">Аренда и коммунальные</option>
-                        <option value="Маркетинг и реклама">Реклама и продвижение (ВК)</option>
-                        <option value="Налоги и взносы">Налоги и взносы</option>
-                        <option value="Прочий расход">Прочий операционный расход</option>
-                    </select>
-                </div>
-                <div style="display:grid; grid-template-columns:1fr 1fr 1fr; gap:8px;">
-                    <input type="number" step="1" name="amount" id="exp-amount" placeholder="Сумма (₽)" required>
-                    <select name="payment_method">
-                        <option value="наличные">Наличными</option>
-                        <option value="безнал">Безнал (р/с)</option>
-                    </select>
-                    <select name="pay_status">
-                        <option value="paid">Оплачено сразу</option>
-                        <option value="unpaid">В долг (Отсрочка)</option>
-                    </select>
-                </div>
-                <input type="text" name="comment" id="exp-comment" placeholder="Основание / Поставщик (напр. Накладная Лосось 15 кг)">
-                <button type="submit" class="btn" style="padding:10px; cursor:pointer;">Провести в учёте</button>
+        <div class="panel-body filter-row">
+            <form method="get" action="/accounting" style="display:flex; gap:8px; align-items:center; flex-wrap:wrap; flex:1; min-width:280px;">
+                <span class="lbl">Период:</span>
+                <input type="date" name="date_from" value="{{ date_from }}">
+                <span class="lbl">—</span>
+                <input type="date" name="date_to" value="{{ date_to }}">
+                <select name="tax_mode" title="Налоговый режим для расчёта белого налога">
+                    <option value="patent" {% if tax_mode == 'patent' %}selected{% endif %}>СНО: Патент (ПСН)</option>
+                    <option value="usn6" {% if tax_mode == 'usn6' %}selected{% endif %}>СНО: УСН 6% (Доходы)</option>
+                    <option value="usn15" {% if tax_mode == 'usn15' %}selected{% endif %}>СНО: УСН 15% (Дох-Расх)</option>
+                </select>
+                <input type="number" step="0.1" name="acq_pct" value="{{ acq_pct }}" style="width:74px;" title="Комиссия эквайринга банка (%)">
+                <span class="lbl">% экв.</span>
+                <button type="submit" class="kbtn kbtn-sm kbtn-primary">Применить</button>
+                <a href="/accounting" class="kbtn kbtn-sm">Все даты</a>
             </form>
-        </div>
-
-        <!-- БЛОК 2: ЖУРНАЛ РАСХОДОВ И КРЕДИТОРКИ -->
-        <div class="card-panel" style="padding:18px;">
-            <h3 style="margin:0 0 12px 0; font-size:14px; text-transform:uppercase; color:#a1a1aa;">Журнал расходов и расчётов с поставщиками</h3>
-            <table>
-                <tr>
-                    <th>Дата</th>
-                    <th>Статья / Поставщик</th>
-                    <th>Контур</th>
-                    <th>Сумма</th>
-                    <th></th>
-                </tr>
-                {% for ex in expenses %}
-                <tr>
-                    <td style="font-size:11px; color:#a1a1aa;">{{ ex.created_at[:10] }}</td>
-                    <td>
-                        <b>{{ ex.category }}</b>
-                        {% if ex.pay_status == 'unpaid' %}
-                        <span class="badge-debt" style="margin-left:5px;">ДОЛГ ПОСТАВЩИКУ</span>
-                        {% endif %}
-                        {% if ex.comment %}<div style="font-size:11px; color:#71717a;">{{ ex.comment }}</div>{% endif %}
-                    </td>
-                    <td>
-                        {% if ex.contour == 'white' %}
-                        <span class="badge-white">БЕЛАЯ</span>
-                        {% else %}
-                        <span class="badge-mgmt">УПРАВЛЕНЧ.</span>
-                        {% endif %}
-                    </td>
-                    <td style="font-weight:800; color:#dc2626;">-{{ ex.amount|round(0)|int }} ₽</td>
-                    <td style="text-align:right; white-space:nowrap;">
-                        {% if ex.pay_status == 'unpaid' %}
-                        <form method="post" action="/accounting/expense/pay/{{ ex.id }}" style="display:inline;">
-                            <button type="submit" class="quick-chip" style="color:#4ade80; padding:3px 7px;" title="Отметить счёт оплаченным">Оплатить</button>
-                        </form>
-                        {% endif %}
-                        <form method="post" action="/accounting/expense/delete/{{ ex.id }}" style="display:inline;">
-                            <button type="submit" class="quick-chip" style="color:#dc2626; padding:3px 7px;">×</button>
-                        </form>
-                    </td>
-                </tr>
-                {% endfor %}
-            </table>
+            <div style="display:flex; gap:6px; flex-wrap:wrap;">
+                <a href="/accounting/export?mode=white&date_from={{ date_from }}&date_to={{ date_to }}" class="kbtn kbtn-sm" style="color:#38bdf8 !important; border-color:rgba(14,165,233,.45) !important;">Книга учёта БЕЛАЯ (.xlsx)</a>
+                <a href="/accounting/export?mode=all&date_from={{ date_from }}&date_to={{ date_to }}" class="kbtn kbtn-sm" style="color:#4ade80 !important; border-color:rgba(22,163,74,.45) !important;">Управленческий P&L (.xlsx)</a>
+            </div>
         </div>
     </div>
+
+    <!-- ТРИ СВОДНЫХ КОНТУРА БУХГАЛТЕРИИ -->
+    <div class="grid-3">
+        <!-- 1. БЕЛАЯ БУХГАЛТЕРИЯ (ФИСКАЛЬНЫЙ КОНТУР) -->
+        <div class="contour-card white-box">
+            <div class="contour-header">
+                <span class="contour-title" style="color:#38bdf8;">1. Белая бухгалтерия (Фискальная / ОФД)</span>
+                <span class="badge-white">Официальный контур</span>
+            </div>
+            <div class="metric-row"><span>Проведено чеков по ККТ:</span><b>{{ summary.white_orders_count }} шт.</b></div>
+            <div class="metric-row"><span>Безнал (Карта / СБП):</span><b>{{ summary.white_card_rev }} ₽</b></div>
+            <div class="metric-row"><span>Фискальный нал (по чеку ККТ):</span><b>{{ summary.white_cash_rev }} ₽</b></div>
+            <div class="metric-row"><span>Комиссия эквайринга ({{ acq_pct }}%):</span><b style="color:#dc2626;">-{{ summary.acquiring_fee }} ₽</b></div>
+            <div class="metric-row"><span>Официальные расходы (по счёту):</span><b style="color:#dc2626;">-{{ summary.white_expenses }} ₽</b></div>
+            <div class="metric-row"><span>Налог к уплате:</span><b style="color:#eab308;">-{{ summary.tax_amount }} ₽</b></div>
+            <div class="metric-big">
+                <span style="font-size:12px; font-weight:700; color:var(--muted);">БЕЛАЯ ВЫРУЧКА (ОФД):</span>
+                <span class="metric-big-val" style="color:#38bdf8;">{{ summary.white_total_rev }} ₽</span>
+            </div>
+            <div class="contour-foot">
+                <span>Чистый остаток на р/с:</span>
+                <b style="color:var(--text);">{{ summary.white_net_profit }} ₽</b>
+            </div>
+        </div>
+
+        <!-- 2. ОПЕРАЦИОННАЯ КАССА (НЕФИСКАЛЬНЫЙ УПРАВЛЕНЧЕСКИЙ НАЛ) -->
+        <div class="contour-card mgmt-box">
+            <div class="contour-header">
+                <span class="contour-title" style="color:#fbbf24;">2. Операционный нал (Без фискализации)</span>
+                <span class="badge-mgmt">Внутренний контур</span>
+            </div>
+            <div class="metric-row"><span>Нефискальных заказов за нал:</span><b>{{ summary.mgmt_orders_count }} шт.</b></div>
+            <div class="metric-row"><span>Доля в общем обороте:</span><b>{{ summary.mgmt_share_pct }}%</b></div>
+            <div class="metric-row"><span>Поступило наличными (без ККТ):</span><b>{{ summary.mgmt_cash_rev }} ₽</b></div>
+            <div class="metric-row"><span>Кассовые выдачи на смене:</span><b style="color:#dc2626;">-{{ summary.shift_cash_out }} ₽</b></div>
+            <div class="metric-row"><span>Управленческие расходы (из нала):</span><b style="color:#dc2626;">-{{ summary.mgmt_expenses }} ₽</b></div>
+            <div class="metric-row"><span>Кредиторка (Не оплачено поставщикам):</span><b style="color:#f87171;">{{ summary.unpaid_debts }} ₽</b></div>
+            <div class="metric-big">
+                <span style="font-size:12px; font-weight:700; color:var(--muted);">ВЫРУЧКА НАЛИЧНЫМИ (УПР.):</span>
+                <span class="metric-big-val" style="color:#fbbf24;">{{ summary.mgmt_cash_rev }} ₽</span>
+            </div>
+            <div class="contour-foot">
+                <span>Фактический остаток наличных:</span>
+                <b style="color:var(--text);">{{ summary.mgmt_net_cash }} ₽</b>
+            </div>
+        </div>
+
+        <!-- 3. СВОДНАЯ УПРАВЛЕНЧЕСКАЯ БУХГАЛТЕРИЯ (100% БИЗНЕСА) -->
+        <div class="contour-card total-box">
+            <div class="contour-header">
+                <span class="contour-title" style="color:#4ade80;">3. Сводный Управленческий P&L (100%)</span>
+                <span class="badge" style="color:#4ade80; border-color:rgba(22,163,74,.45); background:rgba(22,163,74,.1) !important;">Вся экономика</span>
+            </div>
+            <div class="metric-row"><span>Всего выполненных заказов:</span><b>{{ summary.total_orders_count }} шт.</b></div>
+            <div class="metric-row"><span>Общая валовая выручка:</span><b>{{ summary.real_total_rev }} ₽</b></div>
+            <div class="metric-row"><span>Сырьё по техкартам (Food Cost):</span><b style="color:#dc2626;">-{{ summary.food_cost }} ₽ ({{ summary.food_cost_pct }}%)</b></div>
+            <div class="metric-row"><span>ФОТ + Аренда + Упаковка + Экв.:</span><b style="color:#dc2626;">-{{ summary.total_all_expenses }} ₽</b></div>
+            <div class="metric-row"><span>Реальная налоговая нагрузка:</span><b>{{ summary.effective_tax_pct }}%</b></div>
+            <div class="metric-row"><span>Резерв под неоплаченные счета:</span><b style="color:#f87171;">{{ summary.unpaid_debts }} ₽</b></div>
+            <div class="metric-big">
+                <span style="font-size:12px; font-weight:700; color:var(--muted);">ЧИСТАЯ ПРИБЫЛЬ (EBITDA):</span>
+                <span class="metric-big-val" style="color:#4ade80;">{{ summary.real_net_profit }} ₽</span>
+            </div>
+            <div class="contour-foot">
+                <span>Чистая рентабельность бизнеса:</span>
+                <b style="color:#4ade80;">{{ summary.real_margin_pct }}%</b>
+            </div>
+        </div>
+    </div>
+
+    <!-- НИЖНИЕ ПАНЕЛИ: РЕЕСТР ЗАКАЗОВ + УПРАВЛЕНИЕ РАСХОДАМИ И ФОТ -->
+    <div class="admin-grid">
+        <!-- ЛЕВАЯ КОЛОНКА: РЕЕСТР ЗАКАЗОВ -->
+        <div class="panel">
+            <div class="panel-head">
+                <div>
+                    <h2>Распределение чеков: Белая / Управленческая</h2>
+                    <p class="cap">Безнал сразу идёт в Белую. Наличные по умолчанию учитываются в Управленческом контуре, пока не пробит фискальный чек.</p>
+                </div>
+                <div class="chip-row">
+                    <button type="button" class="kbtn kbtn-sm" onclick="filterAccOrders('all')">Все ({{ orders|length }})</button>
+                    <button type="button" class="kbtn kbtn-sm" style="color:#38bdf8 !important;" onclick="filterAccOrders('white')">Белая (ККТ)</button>
+                    <button type="button" class="kbtn kbtn-sm" style="color:#fbbf24 !important;" onclick="filterAccOrders('mgmt')">Управленческая (Нал)</button>
+                </div>
+            </div>
+            <div class="table-wrap" style="border:0; border-radius:0 0 14px 14px;">
+                <table>
+                    <tr>
+                        <th>Заказ</th>
+                        <th>Дата / Время</th>
+                        <th>Оплата</th>
+                        <th>Выручка</th>
+                        <th>Food Cost</th>
+                        <th>Контур учёта</th>
+                        <th>Управление</th>
+                    </tr>
+                    {% for o in orders %}
+                    <tr class="acc-order-row" data-contour="{{ 'white' if o.is_fiscal else 'mgmt' }}">
+                        <td><b class="strong-k" style="color:var(--accent-2);">#{{ o.id }}</b></td>
+                        <td style="font-size:12px; color:var(--muted);">{{ o.created_at[:16] }}</td>
+                        <td>
+                            <span class="badge">{{ o.payment_method }}</span>
+                            {% if o.payment_method in ('микс', 'mix') %}
+                            <div style="font-size:10px; color:var(--muted); margin-top:2px;">Нал: {{ o.payment_cash }} / Карта: {{ o.payment_card }}</div>
+                            {% endif %}
+                        </td>
+                        <td class="t-money" style="font-weight:800;">{{ o.total }} ₽</td>
+                        <td class="t-money" style="color:var(--muted);">{{ (o.cost or (o.total * 0.27))|round(0)|int }} ₽</td>
+                        <td>
+                            {% if o.is_fiscal %}
+                            <span class="badge-white">БЕЛАЯ (ККТ)</span>
+                            {% else %}
+                            <span class="badge-mgmt">УПРАВЛЕНЧЕСКАЯ</span>
+                            {% endif %}
+                        </td>
+                        <td>
+                            <div style="display:flex; gap:5px;">
+                                <button type="button" class="kbtn kbtn-sm" onclick="toggleOrderFiscal({{ o.id }})">
+                                    {% if o.is_fiscal %}В управленческую{% else %}В белую (ККТ){% endif %}
+                                </button>
+                                <a href="/fiscal/{{ o.id }}" target="_blank" class="kbtn kbtn-sm kbtn-ghost">Чек</a>
+                            </div>
+                        </td>
+                    </tr>
+                    {% endfor %}
+                </table>
+            </div>
+        </div>
+
+        <!-- ПРАВАЯ КОЛОНКА: ФОТ СМЕНЫ + РАСХОДЫ И ПОСТАВЩИКИ -->
+        <div>
+            <!-- БЛОК 1: АВТО-КАЛЬКУЛЯТОР ФОТ СМЕНЫ -->
+            <div class="panel">
+                <div class="panel-head">
+                    <div>
+                        <h2 style="color:#4ade80;">Быстрое начисление зарплаты за смену (ФОТ)</h2>
+                    </div>
+                </div>
+                <div class="panel-body">
+                    <div class="chip-row" style="margin-bottom:12px;">
+                        <button type="button" class="kbtn kbtn-sm" onclick="fillPayroll('Зарплата (ФОТ)', 3500, 'Смена повара (фиксированная ставка)')">+ Смена повара (3500 ₽)</button>
+                        <button type="button" class="kbtn kbtn-sm" onclick="fillPayroll('Зарплата (ФОТ)', 2000, 'Смена кассира-администратора')">+ Смена кассира (2000 ₽)</button>
+                        <button type="button" class="kbtn kbtn-sm" onclick="fillPayroll('Выплата курьерам', {{ summary.total_orders_count * 150 }}, 'Оплата курьеру за доставленные заказы')">+ Курьер по заказам ({{ summary.total_orders_count * 150 }} ₽)</button>
+                    </div>
+
+                    <h3 style="margin:12px 0 10px 0; font-size:12.5px; text-transform:uppercase; color:var(--accent-2);">Добавить расход или счёт от поставщика</h3>
+                    <form method="post" action="/accounting/expense/add" class="exp-col" style="display:flex; flex-direction:column; gap:8px;">
+                        <div class="exp-grid-2">
+                            <select name="contour" required>
+                                <option value="black">Управленческий контур (Нал без ККТ)</option>
+                                <option value="white">Белый контур (Официально по счёту)</option>
+                            </select>
+                            <select name="category" id="exp-cat" required>
+                                <option value="Закуп продуктов">Закуп продуктов (Рыба/Рис/Сыр)</option>
+                                <option value="Зарплата (ФОТ)">Зарплата кухни и кассы (ФОТ)</option>
+                                <option value="Выплата курьерам">Выплата курьерам</option>
+                                <option value="Упаковка и хозтовары">Упаковка, палочки, ланч-боксы</option>
+                                <option value="Аренда помещения">Аренда и коммунальные</option>
+                                <option value="Маркетинг и реклама">Реклама и продвижение (ВК)</option>
+                                <option value="Налоги и взносы">Налоги и взносы</option>
+                                <option value="Прочий расход">Прочий операционный расход</option>
+                            </select>
+                        </div>
+                        <div class="exp-grid-3">
+                            <input type="number" step="1" name="amount" id="exp-amount" placeholder="Сумма (₽)" required>
+                            <select name="payment_method">
+                                <option value="наличные">Наличными</option>
+                                <option value="безнал">Безнал (р/с)</option>
+                            </select>
+                            <select name="pay_status">
+                                <option value="paid">Оплачено сразу</option>
+                                <option value="unpaid">В долг (Отсрочка)</option>
+                            </select>
+                        </div>
+                        <input type="text" name="comment" id="exp-comment" placeholder="Основание / Поставщик (напр. Накладная Лосось 15 кг)">
+                        <button type="submit" class="kbtn kbtn-primary" style="width:100%;">Провести в учёте</button>
+                    </form>
+                </div>
+            </div>
+
+            <!-- БЛОК 2: ЖУРНАЛ РАСХОДОВ И КРЕДИТОРКИ -->
+            <div class="panel">
+                <div class="panel-head">
+                    <div>
+                        <h2>Журнал расходов и расчётов с поставщиками</h2>
+                    </div>
+                </div>
+                <div class="table-wrap" style="border:0; border-radius:0 0 14px 14px;">
+                    <table>
+                        <tr>
+                            <th>Дата</th>
+                            <th>Статья / Поставщик</th>
+                            <th>Контур</th>
+                            <th>Сумма</th>
+                            <th></th>
+                        </tr>
+                        {% for ex in expenses %}
+                        <tr>
+                            <td style="font-size:11px; color:var(--muted); white-space:nowrap;">{{ ex.created_at[:10] }}</td>
+                            <td>
+                                <b>{{ ex.category }}</b>
+                                {% if ex.pay_status == 'unpaid' %}
+                                <span class="badge-debt" style="margin-left:5px;">ДОЛГ ПОСТАВЩИКУ</span>
+                                {% endif %}
+                                {% if ex.comment %}<div style="font-size:11px; color:#71717a;">{{ ex.comment }}</div>{% endif %}
+                            </td>
+                            <td>
+                                {% if ex.contour == 'white' %}
+                                <span class="badge-white">БЕЛАЯ</span>
+                                {% else %}
+                                <span class="badge-mgmt">УПРАВЛЕНЧ.</span>
+                                {% endif %}
+                            </td>
+                            <td class="t-money" style="font-weight:800; color:#dc2626;">-{{ ex.amount|round(0)|int }} ₽</td>
+                            <td style="text-align:right; white-space:nowrap;">
+                                {% if ex.pay_status == 'unpaid' %}
+                                <form method="post" action="/accounting/expense/pay/{{ ex.id }}" style="display:inline;">
+                                    <button type="submit" class="kbtn kbtn-sm" style="color:#4ade80 !important; border-color:rgba(22,163,74,.4) !important;" title="Отметить счёт оплаченным">Оплатить</button>
+                                </form>
+                                {% endif %}
+                                <form method="post" action="/accounting/expense/delete/{{ ex.id }}" style="display:inline;">
+                                    <button type="submit" class="kbtn kbtn-sm kbtn-red">×</button>
+                                </form>
+                            </td>
+                        </tr>
+                        {% endfor %}
+                    </table>
+                </div>
+            </div>
+        </div>
+    </div>
+
 </div>
 
 <script>
@@ -371,5 +440,4 @@ function fillPayroll(cat, amt, comm) {
     document.getElementById('exp-amount').focus();
 }
 </script>
-</body>
-</html>
+</body></html>

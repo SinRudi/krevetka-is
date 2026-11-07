@@ -1,0 +1,190 @@
+:root {
+    --exec-bg: #0b0e14;
+    --exec-surface: #121722;
+    --exec-elevated: #19202e;
+    --exec-border: rgba(148, 163, 184, 0.14);
+    --exec-border-hover: rgba(148, 163, 184, 0.32);
+    --exec-text: #f1f5f9;
+    --exec-muted: #94a3b8;
+    --exec-accent: #ea580c;
+    --exec-emerald: #10b981;
+    --exec-blue: #38bdf8;
+}
+
+body {
+    background-color: var(--exec-bg) !important;
+    color: var(--exec-text) !important;
+    font-family: 'Inter', -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif !important;
+    -webkit-font-smoothing: antialiased;
+}
+
+/* Скрываем старые разрозненные кнопки, которые захламляли верхнюю панель */
+#top-bar-tax-btn,
+#omni-top-fiscal-btn,
+a[href="/shop"][target="_blank"],
+#pos-instant-search-bar,
+#omega-floating-dock,
+#btn-franchise-hq {
+    display: none !important;
+}
+
+/* Приводим карточки и панели к строгому корпоративному виду */
+.card, .card-panel, .panel, .box, .order-card, .menu-item, .pos-card {
+    background: var(--exec-surface) !important;
+    border: 1px solid var(--exec-border) !important;
+    border-radius: 10px !important;
+    box-shadow: 0 4px 14px rgba(0, 0, 0, 0.28) !important;
+}
+
+.menu-item:hover, .pos-card:hover {
+    border-color: var(--exec-border-hover) !important;
+    transform: translateY(-1px) !important;
+}
+
+/* Выпадающее мега-меню Администратора в верхней шапке */
+.exec-dropdown-wrapper {
+    position: relative;
+    display: inline-block;
+}
+
+.exec-dropdown-trigger {
+    display: inline-flex;
+    align-items: center;
+    gap: 8px;
+    background: #182030 !important;
+    color: #f8fafc !important;
+    border: 1px solid rgba(148, 163, 184, 0.28) !important;
+    border-radius: 8px !important;
+    padding: 6px 13px !important;
+    font-size: 12px !important;
+    font-weight: 700 !important;
+    cursor: pointer !important;
+    transition: all 0.15s ease !important;
+}
+
+.exec-dropdown-trigger:hover,
+.exec-dropdown-trigger.open {
+    background: #222d42 !important;
+    border-color: #cbd5e1 !important;
+}
+
+.exec-mega-menu {
+    display: none;
+    position: fixed;
+    top: 52px;
+    left: 18px;
+    width: min(980px, calc(100vw - 36px));
+    background: #111621;
+    border: 1px solid rgba(148, 163, 184, 0.24);
+    border-radius: 12px;
+    box-shadow: 0 24px 48px rgba(0, 0, 0, 0.75);
+    padding: 18px;
+    z-index: 100050;
+    grid-template-columns: repeat(4, 1fr);
+    gap: 16px;
+}
+
+@media (max-width: 920px) {
+    .exec-mega-menu {
+        grid-template-columns: repeat(2, 1fr);
+        max-height: 82vh;
+        overflow-y: auto;
+    }
+}
+
+.exec-mega-menu.show {
+    display: grid;
+}
+
+.exec-menu-col {
+    display: flex;
+    flex-direction: column;
+    gap: 4px;
+}
+
+.exec-col-title {
+    font-size: 10px;
+    font-weight: 800;
+    text-transform: uppercase;
+    letter-spacing: 0.06em;
+    color: #64748b;
+    padding: 4px 8px 6px;
+    border-bottom: 1px solid rgba(148, 163, 184, 0.12);
+    margin-bottom: 4px;
+}
+
+.exec-menu-item {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    gap: 8px;
+    padding: 7px 9px;
+    border-radius: 7px;
+    color: #e2e8f0 !important;
+    text-decoration: none !important;
+    font-size: 12px;
+    font-weight: 600;
+    background: transparent;
+    border: none;
+    width: 100%;
+    text-align: left;
+    cursor: pointer;
+    transition: background 0.12s ease, color 0.12s ease;
+}
+
+.exec-menu-item:hover {
+    background: rgba(255, 255, 255, 0.06);
+    color: #ffffff !important;
+}
+
+.exec-menu-sub {
+    font-size: 10px;
+    color: #64748b;
+    font-weight: 500;
+}
+
+/* Аккуратный статус ФЧ в верхней панели */
+#hyperion-top-telemetry {
+    background: #151b28 !important;
+    border: 1px solid rgba(148, 163, 184, 0.22) !important;
+    border-radius: 7px !important;
+    padding: 5px 10px !important;
+    font-size: 11px !important;
+    font-weight: 700 !important;
+    color: #cbd5e1 !important;
+}
+
+/* Строгие бейджи ФЧ в заказах */
+.fch-stamp-ok {
+    background: rgba(16, 185, 129, 0.12) !important;
+    color: #34d399 !important;
+    border: 1px solid rgba(16, 185, 129, 0.4) !important;
+    box-shadow: none !important;
+    font-weight: 700 !important;
+}
+
+.fch-stamp-pending {
+    background: rgba(148, 163, 184, 0.1) !important;
+    color: #cbd5e1 !important;
+    border: 1px solid rgba(148, 163, 184, 0.3) !important;
+    font-weight: 600 !important;
+}
+.fch-stamp-pending:hover {
+    border-color: #10b981 !important;
+    color: #34d399 !important;
+    background: rgba(16, 185, 129, 0.12) !important;
+}
+
+/* Панель быстрого выбора функции внутри /admin */
+#exec-admin-hub-bar {
+    background: #121722;
+    border: 1px solid var(--exec-border);
+    border-radius: 10px;
+    padding: 12px 16px;
+    margin: 12px 18px;
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    flex-wrap: wrap;
+    gap: 12px;
+}

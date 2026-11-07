@@ -37,6 +37,40 @@ body { margin:0; padding:0 !important; background:#09090b; color:#fafafa; }
 .status-pill .dot { width:7px; height:7px; border-radius:50%; background:currentColor; }
 .shop-label { color:#71717a; font-size:11px; text-transform:uppercase; letter-spacing:0.06em; }
 
+/* ---------- Дропдаун «Сервис» ---------- */
+.menu-drop { position:relative; display:inline-flex; }
+.menu-drop summary {
+    list-style:none; user-select:none;
+    display:inline-flex; align-items:center; gap:6px;
+    height:30px; padding:0 11px; border-radius:7px;
+    background:#18181b; border:1px solid #27272a;
+    color:#d4d4d8; font-size:12px; font-weight:600; cursor:pointer;
+    transition:background .14s ease, border-color .14s ease;
+}
+.menu-drop summary::-webkit-details-marker { display:none; }
+.menu-drop summary:hover { background:#202024; border-color:#3f3f46; color:#fafafa; }
+.menu-drop[open] summary { background:rgba(255,105,0,.14); border-color:rgba(255,105,0,.45); color:#ff8a2a; }
+.menu-drop .chev { font-size:9px; color:#71717a; transition:transform .15s ease; }
+.menu-drop[open] .chev { transform:rotate(180deg); color:#ff8a2a; }
+#service-menu .drop-panel {
+    position:absolute; right:0; left:auto; top:calc(100% + 8px); z-index:120;
+    min-width:212px; padding:7px; display:grid; gap:2px; align-content:start;
+    background:#16161a; border:1px solid #3f3f46; border-radius:12px;
+    box-shadow:0 26px 60px rgba(0,0,0,.6);
+    animation:drop-in .14s ease;
+}
+@keyframes drop-in { from { opacity:0; transform:translateY(-5px); } to { opacity:1; transform:none; } }
+#service-menu .drop-item {
+    display:flex; align-items:center; gap:9px;
+    padding:8px 11px; border-radius:8px;
+    color:#d4d4d8; font-size:12.5px; font-weight:600; text-decoration:none; white-space:nowrap;
+}
+#service-menu .drop-item:hover { background:#1f1f23; color:#fafafa; }
+.drop-sep { border-top:1px solid #27272a; margin:5px 4px; }
+@media (max-width:520px) {
+    #service-menu .drop-panel { right:-40px; }
+}
+
 /* ---------- Герой ---------- */
 .hero {
     position:relative; overflow:hidden;
@@ -104,7 +138,15 @@ body { margin:0; padding:0 !important; background:#09090b; color:#fafafa; }
 }
 .menu-card:hover { transform:translateY(-3px); border-color:#3f3f46; box-shadow:0 16px 34px rgba(0,0,0,0.4); }
 .card-media { position:relative; height:152px; background:#0c0c0f; overflow:hidden; flex:0 0 auto; }
-.card-media img { width:100%; height:100%; object-fit:cover; display:block; transition:transform 0.3s ease; }
+.card-media::before {
+    content:""; position:absolute; inset:0;
+    background:linear-gradient(100deg,#141417 30%,#1e1e22 50%,#141417 70%);
+    background-size:220% 100%;
+    animation:media-shimmer 1.3s linear infinite;
+}
+.card-media img { position:relative; z-index:1; width:100%; height:100%; object-fit:cover; display:block; transition:transform 0.3s ease; }
+@keyframes media-shimmer { from { background-position:180% 0; } to { background-position:-80% 0; } }
+.card-media.empty::before { display:none; }
 .menu-card:hover .card-media img { transform:scale(1.05); }
 .card-media.empty { display:flex; align-items:center; justify-content:center; font-size:30px; color:#3f3f46; }
 .card-badge {
@@ -219,6 +261,64 @@ body { margin:0; padding:0 !important; background:#09090b; color:#fafafa; }
     .header-meta .meta-phone { display:none; }
     .cart-panel { max-height:92vh; }
 }
+
+/* ---------- Поля ввода: оранжевый фокус (специфичность выше инжект-темы) ---------- */
+.layout .menu-search input:focus,
+.cart-panel .cart-field input:focus,
+.cart-panel .cart-field select:focus,
+.cart-panel .promo-row input:focus {
+    outline:none !important;
+    border-color:rgba(255,105,0,.55) !important;
+    box-shadow:0 0 0 3px rgba(255,105,0,.14) !important;
+}
+.menu-search input, .cart-field input, .cart-field select, .promo-row input { transition:border-color .14s ease, box-shadow .14s ease; }
+
+/* ---------- Кнопки: глубина и отклик (специфичность выше инжект-темы) ---------- */
+.menu-grid .menu-card .btn-add.card-add,
+.cart-panel .cart-foot .btn-submit.cart-submit,
+.cart-panel .promo-row .quick-chip {
+    background:linear-gradient(135deg,#ff8a2a,#ff4d00) !important;
+    border:0 !important;
+    box-shadow:0 10px 22px rgba(255,105,0,.26) !important;
+    font-weight:800 !important;
+    border-radius:8px !important;
+    transition:transform .15s ease, box-shadow .15s ease, filter .15s ease !important;
+}
+.menu-grid .menu-card .btn-add.card-add:hover,
+.cart-panel .cart-foot .btn-submit.cart-submit:hover,
+.cart-panel .promo-row .quick-chip:hover {
+    transform:translateY(-1px);
+    filter:brightness(1.06);
+    box-shadow:0 14px 28px rgba(255,105,0,.34) !important;
+}
+.menu-grid .menu-card .btn-add.card-add:active,
+.cart-panel .cart-foot .btn-submit.cart-submit:active,
+.cart-panel .promo-row .quick-chip:active { transform:scale(.97) !important; }
+.qty-box button:active { transform:scale(.9); }
+.cat-chip.active { box-shadow:0 6px 16px rgba(255,105,0,.35); }
+
+/* ---------- Мелкие акценты ---------- */
+::selection { background:rgba(255,105,0,.35); color:#fff; }
+html { scroll-behavior:smooth; }
+.menu-card { border-radius:13px; }
+.cart-panel { border-radius:14px; }
+#service-menu .drop-panel { backdrop-filter:blur(12px); background:rgba(22,22,26,.94); }
+.card-badge { border-color:rgba(255,255,255,.08); background:rgba(9,9,11,.78); }
+.cart-body { scrollbar-width:thin; scrollbar-color:#3f3f46 transparent; }
+.cart-body::-webkit-scrollbar { width:5px; }
+.cart-body::-webkit-scrollbar-thumb { background:#3f3f46; border-radius:4px; }
+.cart-remove { transition:color .13s ease, background .13s ease; }
+.qty-box { transition:border-color .14s ease; }
+.qty-box:hover { border-color:#3f3f46; }
+#client-active-order-bar { animation:bar-in .22s ease; }
+@keyframes bar-in { from { opacity:0; transform:translateY(-6px); } to { opacity:1; transform:none; } }
+
+/* ---------- Мягкая подсветка фона ---------- */
+body {
+    background:
+        radial-gradient(1100px 460px at 18% -12%, rgba(255,105,0,.06), transparent 55%),
+        #09090b;
+}
 </style></head><body>
 
 <div id="client-active-order-bar" style="display:none; background:#18181b; border-bottom:1px solid #ff6900; padding:10px 20px; text-align:center; font-size:13px; font-weight:600;">
@@ -243,6 +343,13 @@ body { margin:0; padding:0 !important; background:#09090b; color:#fafafa; }
             {% else %}
             <span class="status-pill closed"><span class="dot"></span> Приём заказов закрыт</span>
             {% endif %}
+            <details class="menu-drop" id="service-menu">
+                <summary aria-label="Меню сервиса">Сервис<span class="chev">▾</span></summary>
+                <div class="drop-panel">
+                    <a class="drop-item" href="#site-grid">🍣 Меню и корзина</a>
+                    <a class="drop-item" id="service-track-link" href="/track" style="display:none;">🔎 Отследить заказ</a>
+                </div>
+            </details>
         </div>
     </div>
 </header>
@@ -576,14 +683,27 @@ function submitOrder(){
 function showActiveOrderBar(){
     const savedOrdId = localStorage.getItem('krevetka_last_order_id');
     if(!savedOrdId) return;
+    const tl = document.getElementById('service-track-link');
+    if(tl){ tl.style.display = 'flex'; tl.href = '/track/' + savedOrdId; }
     fetch('/api/track_order/' + savedOrdId).then(r => r.json()).then(d => {
-        if(d && d.status && d.status !== 'done' && d.status !== 'cancelled'){
+        const done = !d || !d.status || d.status === 'done' || d.status === 'cancelled';
+        if(done && tl) tl.style.display = 'none';
+        if(d && d.status && !done){
             document.getElementById('client-active-order-bar').style.display = 'block';
             document.getElementById('client-active-order-text').innerText = `Ваш заказ #${savedOrdId} на сумму ${d.total} ₽ в работе`;
             document.getElementById('client-active-order-link').href = '/track/' + savedOrdId;
         }
     }).catch(() => {});
 }
+
+/* Дропдаун «Сервис»: закрытие по клику вне меню и по Escape */
+(function(){
+    const drop = document.getElementById('service-menu');
+    if(!drop) return;
+    drop.addEventListener('click', e => { if(e.target.closest('a')) drop.removeAttribute('open'); });
+    document.addEventListener('click', e => { if(drop.open && !drop.contains(e.target)) drop.removeAttribute('open'); });
+    document.addEventListener('keydown', e => { if(e.key === 'Escape' && drop.open) drop.removeAttribute('open'); });
+})();
 
 renderCart();
 showActiveOrderBar();

@@ -68,7 +68,7 @@ def check_pin_authentication():
     path = request.path
     public_prefixes = (
         '/login', '/logout', '/site', '/api/public_order', '/track/', '/api/track_order/',
-        '/rate/', '/api/site/client/', '/api/check_promo', '/static/', '/manifest.json',
+        '/rate/', '/api/site/client/', '/api/check_promo', '/api/detect_zone', '/static/', '/manifest.json',
         '/chat_manifest.json', '/sw.js'
     )
     if any(path == p or path.startswith(p) for p in public_prefixes):
@@ -88,7 +88,7 @@ def inject_ultra_style(response):
             not request.path.startswith('/login')):
             try:
                 html = response.get_data(as_text=True)
-                inject_tags = '<link rel="stylesheet" href="/static/ultra_theme.css?v=512"><script src="/static/operational_modules.js?v=900" defer></script><script src="/static/power_pack.js?v=950" defer></script><script src="/static/ultra_erp_v10.js?v=1000" defer></script><script src="/static/ultra_ui.js?v=512" defer></script>'
+                inject_tags = '<link rel="stylesheet" href="/static/ultra_theme.css?v=611"><script src="/static/operational_modules.js?v=900" defer></script><script src="/static/power_pack.js?v=950" defer></script><script src="/static/ultra_erp_v10.js?v=1000" defer></script><script src="/static/ultra_ui.js?v=610" defer></script>'
                 if 'ultra_theme.css' not in html and '</head>' in html:
                     html = html.replace('</head>', inject_tags + '</head>', 1)
                     response.set_data(html)
@@ -1706,6 +1706,18 @@ import erp_power_pack; erp_power_pack.register_power_pack(app, globals())
 import ultra_erp_v10; ultra_erp_v10.register_ultra_v10(app, globals())
 
 import omega_erp_v12; omega_erp_v12.register_omega_v12(app, globals())
+
+
+
+import titanium_erp_v20; titanium_erp_v20.register_titanium_v20(app, globals())
+
+import singularity_erp_v30; singularity_erp_v30.register_singularity_v30(app, globals())
+
+import apex_erp_v50; apex_erp_v50.register_apex_v50(app, globals())
+
+import omni_monolith_v100; omni_monolith_v100.register_omni_monolith_v100(app, globals())
+
+import hyperion_erp_v200; hyperion_erp_v200.register_hyperion_v200(app, globals())
 
 if __name__ == '__main__':
     init_db()

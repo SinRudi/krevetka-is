@@ -1,0 +1,38 @@
+/* Убираем паразитные блоки, которые ломали сетку витрины и перекрывали кнопку Очистить */
+#pos-instant-search-bar,
+#omega-floating-dock,
+#btn-franchise-hq,
+#franchise-hq-modal {
+    display: none !important;
+}
+
+/* Делаем витрину роллов чистой, контрастной и отзывчивой */
+.menu-item, .pos-card {
+    border: 1px solid rgba(148, 163, 184, 0.16) !important;
+    border-radius: 12px !important;
+    transition: transform 0.12s ease, border-color 0.12s ease !important;
+}
+
+.menu-item:hover, .pos-card:hover {
+    transform: translateY(-2px) !important;
+    border-color: #ff6900 !important;
+}
+
+/* Стиль вкладок внутри командного центра TITANIUM */
+.ti-tab-btn {
+    background: #181c26;
+    color: #cbd5e1;
+    border: 1px solid rgba(148, 163, 184, 0.25);
+    border-radius: 8px;
+    padding: 7px 13px;
+    font-size: 12px;
+    font-weight: 800;
+    cursor: pointer;
+    transition: all 0.14s ease;
+}
+
+.ti-tab-btn:hover, .ti-tab-btn.active {
+    background: rgba(255, 105, 0, 0.16);
+    color: #ff6900;
+    border-color: #ff6900;
+}

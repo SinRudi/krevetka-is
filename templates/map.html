@@ -1,70 +1,639 @@
-<!DOCTYPE html><html lang="ru"><head><meta charset="UTF-8">
-<title>Карта зон доставки — г. Инта</title>
-<link rel="stylesheet" href="https://unpkg.com/leaflet@1.9.4/dist/leaflet.css" />
-<link rel="stylesheet" href="https://unpkg.com/leaflet-draw@1.0.4/dist/leaflet.draw.css" />
-<script src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js"></script>
-<script src="https://unpkg.com/leaflet-draw@1.0.4/dist/leaflet.draw.js"></script>
-<style>
-body { margin:0; padding:20px 30px; }
-.container { display:flex; gap:22px; height: calc(100vh - 150px); }
-.map-wrapper { flex:2.2; border-radius:18px; overflow:hidden; border:2px solid rgba(255,107,0,0.3); }
-#map { height:100%; width:100%; }
-.sidebar { flex:1; padding:22px; overflow-y:auto; max-width:380px; }
-.field { margin-bottom:14px; }
-.field label { display:block; margin-bottom:6px; color:#94a3b8; font-size:13px; font-weight:600; }
-.zone-card { padding:14px 16px; margin-bottom:10px; display:flex; justify-content:space-between; align-items:center; border-left: 5px solid #ff6b00 !important; }
-</style></head><body>
-<div class="page-nav-header"><div class="page-nav-left"><a href="/admin" class="btn-back-nav">← Назад в Управление</a><a href="/" class="btn-back-nav">← В Кассу</a><h1 style="margin:0;font-size:20px; color:#ff6b00; font-size:26px; font-weight:900;"> Гео-зоны доставки и трекинг курьеров ({{ brand_city }})</h1></div></div>
-<div class="container">
-    <div class="map-wrapper"><div id="map"></div></div>
-    <div class="sidebar">
-        <h2 style="margin-top:0; color:#ff6b00; font-size:19px;">+ Новая зона доставки</h2>
-        <div class="field"><label>Название района</label><input type="text" id="z-name" placeholder="Напр. Центр / Западный" style="width:100%;"></div>
-        <div class="field"><label>Тариф доставки (₽)</label><input type="number" id="z-price" value="150" style="width:100%;"></div>
-        <div class="field"><label>Цвет полигона</label><input type="color" id="z-color" value="#10b981" style="width:100%; height:42px; padding:3px;"></div>
-        <button class="btn btn-ready" style="width:100%; padding:13px; cursor:pointer;" onclick="saveZone()"> Сохранить зону</button>
-        <h3 style="margin-top:25px;"> Активные тарифы ({{ brand_city }})</h3>
-        <div id="zones-list"></div>
+<!DOCTYPE html>
+<html lang="ru">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Гео-радар и Зоны доставки (г. Инта) • КРЕВЕТКА IS</title>
+    <link rel="stylesheet" href="https://unpkg.com/leaflet@1.9.4/dist/leaflet.css" crossorigin=""/>
+    <script src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js" crossorigin=""></script>
+    <style>
+        :root {
+            --bg-dark: #090b10;
+            --bg-panel: #121620;
+            --bg-input: #1a202e;
+            --accent: #ff6900;
+            --emerald: #10b981;
+            --cyan: #38bdf8;
+            --border: rgba(148, 163, 184, 0.18);
+        }
+        * { box-sizing: border-box; }
+        body {
+            margin: 0;
+            background: var(--bg-dark);
+            color: #f8fafc;
+            font-family: 'Inter', -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif;
+            overflow-x: hidden;
+        }
+        /* Верхняя навигационная панель как в основном терминале */
+        .top-bar {
+            display: flex;
+            align-items: center;
+            justify-content: space-between;
+            flex-wrap: wrap;
+            gap: 10px;
+            padding: 10px 18px;
+            background: #0d1017;
+            border-bottom: 1px solid var(--border);
+        }
+        .nav-group { display: flex; align-items: center; gap: 6px; flex-wrap: wrap; }
+        .nav-btn {
+            background: #171c28;
+            color: #cbd5e1;
+            border: 1px solid var(--border);
+            padding: 6px 12px;
+            border-radius: 8px;
+            font-size: 12px;
+            font-weight: 700;
+            text-decoration: none;
+            cursor: pointer;
+            transition: all 0.15s ease;
+        }
+        .nav-btn:hover { border-color: var(--accent); color: #fff; transform: translateY(-1px); }
+        .nav-btn.active { background: var(--accent); color: #fff; border-color: var(--accent); }
+
+        .sub-header {
+            display: flex;
+            align-items: center;
+            justify-content: space-between;
+            flex-wrap: wrap;
+            gap: 12px;
+            margin: 12px 18px;
+            padding: 12px 16px;
+            background: var(--bg-panel);
+            border: 1px solid var(--border);
+            border-radius: 12px;
+        }
+        .workspace {
+            display: grid;
+            grid-template-columns: 1fr 370px;
+            gap: 16px;
+            padding: 0 18px 20px;
+            height: calc(100vh - 135px);
+            min-height: 620px;
+        }
+        @media (max-width: 1024px) {
+            .workspace { grid-template-columns: 1fr; height: auto; }
+        }
+        .map-wrapper {
+            position: relative;
+            background: #0c1018;
+            border: 1px solid rgba(255, 105, 0, 0.45);
+            border-radius: 14px;
+            overflow: hidden;
+            display: flex;
+            flex-direction: column;
+            min-height: 580px;
+        }
+        .map-toolbar {
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+            flex-wrap: wrap;
+            gap: 8px;
+            padding: 10px 14px;
+            background: rgba(18, 22, 32, 0.95);
+            border-bottom: 1px solid var(--border);
+            z-index: 500;
+        }
+        #inta-map {
+            flex: 1;
+            width: 100%;
+            height: 100%;
+            min-height: 520px;
+            background: radial-gradient(circle at center, #111827 0%, #07090e 100%);
+        }
+        .side-panel {
+            background: var(--bg-panel);
+            border: 1px solid var(--border);
+            border-radius: 14px;
+            padding: 16px;
+            display: flex;
+            flex-direction: column;
+            gap: 14px;
+            overflow-y: auto;
+        }
+        .field-label { font-size: 11px; color: #94a3b8; font-weight: 700; margin-bottom: 4px; display: block; }
+        .inp {
+            width: 100%;
+            background: var(--bg-input);
+            color: #fff;
+            border: 1px solid rgba(148, 163, 184, 0.25);
+            border-radius: 8px;
+            padding: 9px 12px;
+            font-size: 13px;
+        }
+        .btn-green {
+            width: 100%;
+            background: var(--emerald);
+            color: #052e16;
+            font-weight: 900;
+            border: none;
+            border-radius: 8px;
+            padding: 11px;
+            font-size: 13px;
+            cursor: pointer;
+            transition: opacity 0.15s;
+        }
+        .btn-green:hover { opacity: 0.92; }
+        .zone-card {
+            background: #171c28;
+            border: 1px solid var(--border);
+            border-radius: 10px;
+            padding: 10px 12px;
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+            gap: 8px;
+            transition: border-color 0.15s;
+            cursor: pointer;
+        }
+        .zone-card:hover { border-color: var(--accent); }
+        .badge {
+            font-size: 11px;
+            font-weight: 800;
+            padding: 3px 8px;
+            border-radius: 999px;
+            background: rgba(255,255,255,0.06);
+        }
+        /* Автономный SVG-радар на случай блокировки внешних карт */
+        #svg-fallback-radar {
+            display: none;
+            width: 100%;
+            height: 100%;
+            min-height: 520px;
+            position: relative;
+            background: #080b11;
+        }
+        .leaflet-popup-content-wrapper {
+            background: #131824 !important;
+            color: #f8fafc !important;
+            border: 1px solid #ff6900;
+            border-radius: 10px !important;
+        }
+        .leaflet-popup-tip { background: #131824 !important; }
+    </style>
+</head>
+<body>
+
+<div class="top-bar">
+    <div class="nav-group">
+        <a href="/" class="nav-btn" style="font-weight:900; color:#fff;">🍤 КРЕВЕТКА IS <span style="background:#ff6900;color:#fff;padding:1px 6px;border-radius:4px;font-size:10px;">ERP</span></a>
+        <button type="button" class="nav-btn" style="border-color:#38bdf8;color:#38bdf8;" onclick="window.openTitaniumSuite && window.openTitaniumSuite('zreport')">⚡ Z-Отчёт • Техкарты</button>
+        <button type="button" class="nav-btn" style="border-color:#ff6900;color:#ff6900;" onclick="window.openTitaniumSuite && window.openTitaniumSuite('abc')">📊 P&L • ABC • Цех</button>
+        <a href="/" class="nav-btn">Касса POS</a>
+        <a href="/kitchen" class="nav-btn">Экран KDS</a>
+        <a href="/courier" class="nav-btn">Курьер</a>
+        <a href="/admin" class="nav-btn">Управление и Штат</a>
+        <a href="/warehouse" class="nav-btn">Склад и П/Ф</a>
+        <a href="/accounting" class="nav-btn">Бухгалтерия</a>
+        <a href="/analytics" class="nav-btn">Финансы P&L</a>
+        <a href="/crm" class="nav-btn">CRM</a>
+        <a href="/map" class="nav-btn active">Зоны</a>
+    </div>
+    <div class="nav-group">
+        <span class="badge" style="border:1px solid #10b981;color:#10b981;">📍 г. Инта (66.03° N, 60.16° E)</span>
+        <a href="/" class="nav-btn">← В Кассу</a>
     </div>
 </div>
+
+<div class="sub-header">
+    <div style="display:flex; align-items:center; gap:10px; flex-wrap:wrap;">
+        <a href="/admin" class="nav-btn">← Назад в Управление</a>
+        <a href="/" class="nav-btn">← В Кассу</a>
+        <span style="font-size:16px; font-weight:900; color:#ff6900;">🗺 Гео-зоны доставки, расчёт тарифа и трекинг курьеров (г. Инта)</span>
+    </div>
+    <div style="display:flex; gap:8px; align-items:center; flex-wrap:wrap;">
+        <span id="radar-status-pill" class="badge" style="border:1px solid #38bdf8; color:#38bdf8;">🛰 Спутниковая сетка г. Инта активна</span>
+        <button type="button" class="nav-btn" onclick="focusIntaSector('all')">🔍 Показать всю Инту</button>
+        <button type="button" class="nav-btn" style="border-color:#eab308;color:#eab308;" onclick="toggleFallbackMode()">📡 Режим: Карта / Тактический Радар</button>
+    </div>
+</div>
+
+<div class="workspace">
+    <!-- ЛЕВАЯ ЧАСТЬ: ИНТЕРАКТИВНАЯ КАРТА Г. ИНТА -->
+    <div class="map-wrapper">
+        <div class="map-toolbar">
+            <div style="display:flex; gap:6px; flex-wrap:wrap; align-items:center;">
+                <span style="font-size:11px; font-weight:800; color:#94a3b8; margin-right:4px;">БЫСТРЫЙ ПЕРЕЛЁТ ПО РАЙОНАМ:</span>
+                <button type="button" class="nav-btn" onclick="focusIntaSector('center')" style="border-left:3px solid #10b981;">Центр (Куратова/Горького)</button>
+                <button type="button" class="nav-btn" onclick="focusIntaSector('west')" style="border-left:3px solid #eab308;">Западный (Воркутинская)</button>
+                <button type="button" class="nav-btn" onclick="focusIntaSector('south')" style="border-left:3px solid #f97316;">Южный / Сельхоз</button>
+                <button type="button" class="nav-btn" onclick="focusIntaSector('upper')" style="border-left:3px solid #ef4444;">Верхняя Инта / Вокзал</button>
+            </div>
+            <div style="display:flex; gap:6px; align-items:center;">
+                <select id="tile-layer-select" class="inp" style="width:auto; padding:5px 10px; font-size:12px;" onchange="switchTileLayer(this.value)">
+                    <option value="osm">🗺 Схема улиц и домов (OSM)</option>
+                    <option value="dark">🌑 Ночной диспетчер (Dark)</option>
+                    <option value="sat">🛰 Спутник высокого разрешения</option>
+                </select>
+            </div>
+        </div>
+
+        <!-- Контейнер живой карты Leaflet -->
+        <div id="inta-map"></div>
+
+        <!-- Встроенный автономный векторный радар г. Инта (если нет интернета или заблокирован CDN) -->
+        <div id="svg-fallback-radar">
+            <svg viewBox="0 0 900 540" style="width:100%; height:100%;">
+                <defs>
+                    <pattern id="grid" width="30" height="30" patternUnits="userSpaceOnUse">
+                        <path d="M 30 0 L 0 0 0 30" fill="none" stroke="rgba(56,189,248,0.08)" stroke-width="1"/>
+                    </pattern>
+                </defs>
+                <rect width="900" height="540" fill="url(#grid)"/>
+                <!-- Река Большая Инта -->
+                <path d="M 80 480 Q 280 350 470 280 T 850 90" fill="none" stroke="rgba(56,189,248,0.28)" stroke-width="26" stroke-linecap="round"/>
+                <text x="690" y="145" fill="#38bdf8" font-size="11" font-weight="bold" opacity="0.8">р. Большая Инта</text>
+
+                <!-- Полигон 1: Центр / Город -->
+                <polygon points="350,170 560,170 580,310 340,310" fill="rgba(16,185,129,0.22)" stroke="#10b981" stroke-width="2.5"/>
+                <text x="395" y="235" fill="#10b981" font-size="14" font-weight="bold">ЦЕНТР / ГОРОД (150 ₽ • 30 мин)</text>
+                <text x="395" y="255" fill="#cbd5e1" font-size="11">ул. Куратова • ул. Горького • ул. Мира • Полярная</text>
+
+                <!-- Полигон 2: Западный -->
+                <polygon points="140,150 340,170 330,320 130,300" fill="rgba(234,179,8,0.22)" stroke="#eab308" stroke-width="2.5"/>
+                <text x="160" y="225" fill="#eab308" font-size="14" font-weight="bold">ЗАПАДНЫЙ РАЙОН (180 ₽ • 38 мин)</text>
+                <text x="160" y="245" fill="#cbd5e1" font-size="11">ул. Воркутинская • ул. Морозова • Заречная</text>
+
+                <!-- Полигон 3: Южный / Сельхоз -->
+                <polygon points="330,320 580,320 600,460 310,460" fill="rgba(249,115,22,0.22)" stroke="#f97316" stroke-width="2.5"/>
+                <text x="365" y="385" fill="#f97316" font-size="14" font-weight="bold">ЮЖНЫЙ / СЕЛЬХОЗ (220 ₽ • 42 мин)</text>
+                <text x="365" y="405" fill="#cbd5e1" font-size="11">ул. Кирова • ул. Чайковского • мкр. Южный</text>
+
+                <!-- Полигон 4: Верхняя Инта -->
+                <polygon points="620,60 860,60 860,210 620,210" fill="rgba(239,68,68,0.22)" stroke="#ef4444" stroke-width="2.5"/>
+                <text x="645" y="125" fill="#ef4444" font-size="14" font-weight="bold">ВЕРХНЯЯ ИНТА / СТАНЦИЯ (300 ₽)</text>
+                <text x="645" y="145" fill="#cbd5e1" font-size="11">Ж/Д Вокзал • Депо • пгт. Верхняя Инта (50 мин)</text>
+
+                <!-- База Креветка IS -->
+                <circle cx="455" cy="210" r="9" fill="#ff6900" stroke="#fff" stroke-width="2.5"/>
+                <text x="470" y="214" fill="#fff" font-size="12" font-weight="900">🍤 БАЗА «КРЕВЕТКА»</text>
+            </svg>
+        </div>
+    </div>
+
+    <!-- ПРАВАЯ ЧАСТЬ: УПРАВЛЕНИЕ ЗОНАМИ, ТАРИФАМИ И АКТИВНЫМИ КУРЬЕРАМИ -->
+    <div class="side-panel">
+        <div>
+            <div style="font-size:15px; font-weight:900; color:#ff6900; margin-bottom:10px;">+ Новая зона доставки / Тариф</div>
+            <div style="display:flex; flex-direction:column; gap:8px;">
+                <div>
+                    <label class="field-label">Название района г. Инта</label>
+                    <input type="text" id="zone-name-inp" class="inp" placeholder="Напр. Заречный / Дачи">
+                </div>
+                <div style="display:grid; grid-template-columns:1fr 1fr; gap:8px;">
+                    <div>
+                        <label class="field-label">Тариф курьера (₽)</label>
+                        <input type="number" id="zone-fee-inp" class="inp" value="150">
+                    </div>
+                    <div>
+                        <label class="field-label">Норматив SLA (мин)</label>
+                        <input type="number" id="zone-sla-inp" class="inp" value="35">
+                    </div>
+                </div>
+                <div style="display:grid; grid-template-columns:1fr 1fr; gap:8px; align-items:end;">
+                    <div>
+                        <label class="field-label">Цвет полигона на карте</label>
+                        <input type="color" id="zone-color-inp" value="#10b981" style="width:100%; height:36px; border:none; border-radius:8px; background:#1a202e; cursor:pointer;">
+                    </div>
+                    <div>
+                        <label class="field-label">Бесплатно от чека (₽)</label>
+                        <input type="number" id="zone-free-inp" class="inp" value="1200">
+                    </div>
+                </div>
+                <button type="button" class="btn-green" onclick="saveIntaZone()">💾 Сохранить зону доставки</button>
+            </div>
+        </div>
+
+        <hr style="border:none; border-top:1px solid var(--border); width:100%; margin:2px 0;">
+
+        <!-- КАЛЬКУЛЯТОР ПРОВЕРКИ УЛИЦЫ ИНТЫ -->
+        <div style="background:#171c28; border:1px solid rgba(56,189,248,0.3); border-radius:10px; padding:10px 12px;">
+            <div style="font-size:12px; font-weight:800; color:#38bdf8; margin-bottom:6px;">🔎 Быстрая проверка тарифа по улице Инты</div>
+            <input type="text" id="street-check-inp" class="inp" placeholder="Введите улицу (напр. Куратова 12, Кирова, Вокзал)..." oninput="checkIntaStreet(this.value)">
+            <div id="street-check-res" style="font-size:12px; margin-top:6px; color:#cbd5e1;">Введите адрес или кликните в любую точку карты слева</div>
+        </div>
+
+        <div>
+            <div style="display:flex; justify-content:space-between; align-items:center; margin-bottom:8px;">
+                <span style="font-size:14px; font-weight:900;">Активные тарифы (г. Инта)</span>
+                <button type="button" class="nav-btn" style="padding:3px 8px; font-size:11px;" onclick="resetDefaultIntaZones()">↺ Сбросить эталон</button>
+            </div>
+            <div id="zones-list-box" style="display:flex; flex-direction:column; gap:8px;"></div>
+        </div>
+
+        <div>
+            <div style="font-size:13px; font-weight:900; color:#10b981; margin-bottom:6px;">🛵 Активные доставки на линии</div>
+            <div id="live-orders-map-list" style="display:flex; flex-direction:column; gap:6px; font-size:12px;"></div>
+        </div>
+    </div>
+</div>
+
 <script>
-let map = L.map('map').setView([{{ map_lat }}, {{ map_lng }}], 13);
-L.tileLayer('https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png').addTo(map);
-let drawnItems = new L.FeatureGroup(); map.addLayer(drawnItems);
-let currentPolygonData = null;
-let drawControl = new L.Control.Draw({
-    draw: { polygon: { shapeOptions: { color: '#ff6b00', fillColor: '#ff6b00', fillOpacity: 0.35 } }, polyline: false, rectangle: true, circle: false, marker: false, circlemarker: false },
-    edit: { featureGroup: drawnItems, remove: false }
-});
-map.addControl(drawControl);
-map.on(L.Draw.Event.CREATED, function (e) {
-    drawnItems.clearLayers(); drawnItems.addLayer(e.layer);
-    currentPolygonData = JSON.stringify(e.layer.getLatLngs()[0].map(p => [p.lat, p.lng]));
-    document.getElementById('z-name').focus();
-});
-function loadZones() {
-    fetch('/api/zones').then(r=>r.json()).then(data => {
-        const list = document.getElementById('zones-list'); list.innerHTML = '';
-        map.eachLayer((layer) => { if(layer instanceof L.Polygon && !drawnItems.hasLayer(layer)) map.removeLayer(layer); });
-        data.forEach(z => {
-            let col = z.color || '#ff6b00';
-            if(z.polygon_data) {
-                try { L.polygon(JSON.parse(z.polygon_data), { color: col, fillColor: col, fillOpacity: 0.28 }).addTo(map).bindPopup(`<b>${z.name}</b><br>Доставка: ${z.price} ₽`); } catch(e) {}
-            }
-            const div = document.createElement('div'); div.className = 'zone-card';
-            div.style.setProperty('border-left-color', col, 'important');
-            div.innerHTML = `<div><b>${z.name}</b><br><span style="color:${col};font-weight:800;">${z.price} ₽</span></div><button class="btn btn-danger" style="padding:6px 11px;" onclick="deleteZone(${z.id})">✖</button>`;
-            list.appendChild(div);
+let intaMap = null;
+let currentTileLayer = null;
+let polygonsLayerGroup = null;
+let ordersLayerGroup = null;
+let isFallbackRadar = false;
+let cachedZones = [];
+
+const TILE_SOURCES = {
+    osm: {
+        url: 'https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png',
+        attr: '© OpenStreetMap • г. Инта'
+    },
+    dark: {
+        url: 'https://{s}.basemaps.cartocdn.com/dark_all/{z}/{x}/{y}{r}.png',
+        attr: '© CartoDB Dark • КРЕВЕТКА IS'
+    },
+    sat: {
+        url: 'https://server.arcgisonline.com/ArcGIS/rest/services/World_Imagery/MapServer/tile/{z}/{y}/{x}',
+        attr: '© Esri Satellite • г. Инта'
+    }
+};
+
+function initIntaMap() {
+    if (typeof L === 'undefined') {
+        enableSvgFallback('Библиотека Leaflet недоступна — включён встроенный тактический радар г. Инта');
+        return;
+    }
+    try {
+        // Центр г. Инта (ул. Куратова / Горького): 66.0317, 60.1659
+        intaMap = L.map('inta-map', {
+            center: [66.0317, 60.1659],
+            zoom: 13,
+            zoomControl: true
         });
+
+        polygonsLayerGroup = L.layerGroup().addTo(intaMap);
+        ordersLayerGroup = L.layerGroup().addTo(intaMap);
+
+        switchTileLayer('osm');
+
+        // Маркер базы «КРЕВЕТКА IS» в центре Инты
+        const hqIcon = L.divIcon({
+            className: 'custom-hq-pin',
+            html: '<div style="background:#ff6900;color:#fff;font-weight:900;font-size:12px;padding:4px 8px;border-radius:999px;border:2px solid #fff;box-shadow:0 4px 12px rgba(0,0,0,0.6);white-space:nowrap;">🍤 ЦЕХ КРЕВЕТКА</div>',
+            iconSize: [120, 28],
+            iconAnchor: [60, 14]
+        });
+        L.marker([66.0322, 60.1635], { icon: hqIcon })
+            .addTo(intaMap)
+            .bindPopup('<b>🍤 Флагманская кухня «КРЕВЕТКА IS»</b><br>г. Инта • Стандарт роллов: 8 кусочков');
+
+        // Клик по карте определяет ближайшую зону доставки
+        intaMap.on('click', function(e) {
+            const lat = e.latlng.lat.toFixed(4);
+            const lng = e.latlng.lng.toFixed(4);
+            const matched = detectZoneByCoords(e.latlng.lat, e.latlng.lng);
+            const resBox = document.getElementById('street-check-res');
+            if (resBox && matched) {
+                resBox.innerHTML = `📍 Точка [${lat}, ${lng}] → <b style="color:${matched.color};">${matched.name}</b> • Тариф: <b>${matched.fee} ₽</b> • SLA: <b>${matched.sla} мин</b>`;
+            }
+        });
+
+        setTimeout(() => { intaMap.invalidateSize(); }, 250);
+    } catch (err) {
+        enableSvgFallback('Включён автономный радар Инты');
+    }
+}
+
+function switchTileLayer(mode) {
+    if (!intaMap || typeof L === 'undefined') return;
+    if (currentTileLayer) {
+        intaMap.removeLayer(currentTileLayer);
+    }
+    const src = TILE_SOURCES[mode] || TILE_SOURCES.osm;
+    let tileErrors = 0;
+    currentTileLayer = L.tileLayer(src.url, {
+        maxZoom: 19,
+        attribution: src.attr
+    });
+    currentTileLayer.on('tileerror', function() {
+        tileErrors++;
+        if (tileErrors > 6 && mode === 'osm') {
+            // Авто-переключение на резервный CDN CartoDB, если OSM недоступен
+            switchTileLayer('dark');
+        }
+    });
+    currentTileLayer.addTo(intaMap);
+}
+
+function enableSvgFallback(msg) {
+    isFallbackRadar = true;
+    document.getElementById('inta-map').style.display = 'none';
+    document.getElementById('svg-fallback-radar').style.display = 'block';
+    const pill = document.getElementById('radar-status-pill');
+    if (pill) {
+        pill.style.borderColor = '#eab308';
+        pill.style.color = '#eab308';
+        pill.textContent = '📡 ' + (msg || 'Тактический векторный радар г. Инта');
+    }
+}
+
+function toggleFallbackMode() {
+    if (isFallbackRadar) {
+        isFallbackRadar = false;
+        document.getElementById('svg-fallback-radar').style.display = 'none';
+        document.getElementById('inta-map').style.display = 'block';
+        if (intaMap) intaMap.invalidateSize();
+        const pill = document.getElementById('radar-status-pill');
+        if (pill) {
+            pill.style.borderColor = '#38bdf8';
+            pill.style.color = '#38bdf8';
+            pill.textContent = '🛰 Спутниковая сетка г. Инта активна';
+        }
+    } else {
+        enableSvgFallback('Включён тактический векторный радар г. Инта');
+    }
+}
+
+function detectZoneByCoords(lat, lng) {
+    if (lat > 66.055 || lng > 60.21) {
+        return { name: 'Верхняя Инта / Станция', fee: 300, sla: 50, color: '#ef4444' };
+    }
+    if (lat < 66.018) {
+        return { name: 'Южный / Сельхоз', fee: 220, sla: 42, color: '#f97316' };
+    }
+    if (lng < 60.145) {
+        return { name: 'Западный район', fee: 180, sla: 38, color: '#eab308' };
+    }
+    return { name: 'Центр / Город', fee: 150, sla: 30, color: '#10b981' };
+}
+
+function loadIntaZonesAndOrders() {
+    fetch('/api/map/zones_data')
+    .then(r => r.json())
+    .then(d => {
+        cachedZones = d.zones || [];
+        renderZonesSidebar(cachedZones);
+        renderMapPolygons(cachedZones);
+        renderLiveOrderPins(d.active_orders || []);
+    })
+    .catch(() => {});
+}
+
+function renderZonesSidebar(zones) {
+    const box = document.getElementById('zones-list-box');
+    if (!box) return;
+    if (!zones.length) {
+        box.innerHTML = '<div style="font-size:12px; opacity:0.7;">Нет зон. Нажмите «Сбросить эталон».</div>';
+        return;
+    }
+    box.innerHTML = zones.map(z => `
+        <div class="zone-card" onclick="zoomToZone(${z.id})">
+            <div style="display:flex; align-items:center; gap:10px;">
+                <span style="width:12px; height:12px; border-radius:50%; background:${z.color}; display:inline-block; box-shadow:0 0 8px ${z.color};"></span>
+                <div>
+                    <div style="font-weight:800; font-size:13px;">${z.name}</div>
+                    <div style="font-size:11px; color:#94a3b8;">⏱ SLA: ${z.sla_min} мин • Бесплатно от ${z.free_from} ₽</div>
+                </div>
+            </div>
+            <div style="display:flex; align-items:center; gap:6px;">
+                <span class="badge" style="color:${z.color}; border:1px solid ${z.color};">${z.fee} ₽</span>
+                <button type="button" class="nav-btn" style="padding:2px 6px; color:#ef4444; border-color:rgba(239,68,68,0.3);" onclick="event.stopPropagation(); deleteIntaZone(${z.id})">✕</button>
+            </div>
+        </div>
+    `).join('');
+}
+
+function renderMapPolygons(zones) {
+    if (!intaMap || !polygonsLayerGroup) return;
+    polygonsLayerGroup.clearLayers();
+
+    zones.forEach(z => {
+        if (!z.coords || !z.coords.length) return;
+        const poly = L.polygon(z.coords, {
+            color: z.color,
+            weight: 2.5,
+            fillColor: z.color,
+            fillOpacity: 0.22
+        }).addTo(polygonsLayerGroup);
+
+        poly.bindPopup(`
+            <div style="min-width:190px;">
+                <div style="font-weight:900; font-size:14px; color:${z.color}; margin-bottom:4px;">${z.name}</div>
+                <div style="font-size:12px;">🛵 Тариф доставки: <b>${z.fee} ₽</b></div>
+                <div style="font-size:12px;">⏱ Норматив SLA: <b>${z.sla_min} мин</b></div>
+                <div style="font-size:12px;">🎁 Бесплатно от: <b>${z.free_from} ₽</b></div>
+                <div style="font-size:11px; opacity:0.75; margin-top:4px;">${z.streets_hint || ''}</div>
+            </div>
+        `);
     });
 }
-function saveZone() {
-    if(!currentPolygonData) return alert('Нарисуйте полигон зоны на карте!');
-    fetch('/api/zones', {
-        method: 'POST', headers: {'Content-Type': 'application/json'},
-        body: JSON.stringify({ name: document.getElementById('z-name').value || 'Зона', price: document.getElementById('z-price').value || 0, color: document.getElementById('z-color').value, polygon_data: currentPolygonData })
-    }).then(r=>r.json()).then(d=>{ if(d.success) { drawnItems.clearLayers(); currentPolygonData = null; loadZones(); } });
+
+function renderLiveOrderPins(orders) {
+    const listEl = document.getElementById('live-orders-map-list');
+    if (ordersLayerGroup) ordersLayerGroup.clearLayers();
+
+    if (!orders.length) {
+        if (listEl) listEl.innerHTML = '<div style="opacity:0.65;">Сейчас нет активных доставок в пути</div>';
+        return;
+    }
+
+    if (listEl) {
+        listEl.innerHTML = orders.map(o => `
+            <div style="background:#171c28; border:1px solid var(--border); border-radius:8px; padding:7px 10px; display:flex; justify-content:space-between; align-items:center;">
+                <div>
+                    <b>#${o.id}</b> • ${o.address}
+                    <div style="font-size:10px; color:#38bdf8;">${o.zone_name} • ${o.status.toUpperCase()}</div>
+                </div>
+                <b style="color:#10b981;">${o.total} ₽</b>
+            </div>
+        `).join('');
+    }
+
+    if (!intaMap || !ordersLayerGroup) return;
+    orders.forEach(o => {
+        const pin = L.divIcon({
+            className: 'order-pin',
+            html: `<div style="background:#10b981;color:#052e16;font-weight:900;font-size:11px;padding:3px 7px;border-radius:8px;border:2px solid #fff;box-shadow:0 3px 10px rgba(0,0,0,0.5);white-space:nowrap;">🛵 #${o.id}</div>`,
+            iconSize: [64, 24],
+            iconAnchor: [32, 12]
+        });
+        L.marker([o.lat, o.lng], { icon: pin })
+            .addTo(ordersLayerGroup)
+            .bindPopup(`<b>Заказ #${o.id}</b><br>Адрес: ${o.address}<br>Сумма: <b>${o.total} ₽</b><br>Зона: ${o.zone_name}`);
+    });
 }
-function deleteZone(id) { if(confirm('Удалить зону?')) fetch('/api/zones/delete/' + id, {method: 'POST'}).then(()=>loadZones()); }
-loadZones();
-</script></body></html>
+
+function zoomToZone(zoneId) {
+    const z = cachedZones.find(item => item.id === zoneId);
+    if (!z || !z.coords || !intaMap) return;
+    const bounds = L.latLngBounds(z.coords);
+    intaMap.fitBounds(bounds, { padding: [30, 30] });
+}
+
+function focusIntaSector(sector) {
+    if (!intaMap) return;
+    if (sector === 'center') intaMap.setView([66.0325, 60.1650], 14);
+    else if (sector === 'west') intaMap.setView([66.0360, 60.1300], 14);
+    else if (sector === 'south') intaMap.setView([66.0120, 60.1620], 14);
+    else if (sector === 'upper') intaMap.setView([66.0720, 60.2650], 13);
+    else intaMap.setView([66.0380, 60.1850], 12);
+}
+
+function checkIntaStreet(q) {
+    const val = (q || '').trim().toLowerCase();
+    const res = document.getElementById('street-check-res');
+    if (!val) {
+        res.textContent = 'Введите адрес или кликните в любую точку карты слева';
+        return;
+    }
+    let matched = cachedZones[0] || { name: 'Центр / Город', fee: 150, sla_min: 30, color: '#10b981' };
+    if (val.includes('верхн') || val.includes('вокзал') || val.includes('станц') || val.includes('депо')) {
+        matched = cachedZones.find(z => z.name.toLowerCase().includes('верхн')) || { name: 'Верхняя Инта / Станция', fee: 300, sla_min: 50, color: '#ef4444' };
+        focusIntaSector('upper');
+    } else if (val.includes('южн') || val.includes('сельхоз') || val.includes('кирова') || val.includes('чайковск')) {
+        matched = cachedZones.find(z => z.name.toLowerCase().includes('южн')) || { name: 'Южный / Сельхоз', fee: 220, sla_min: 42, color: '#f97316' };
+        focusIntaSector('south');
+    } else if (val.includes('воркут') || val.includes('запад') || val.includes('морозов') || val.includes('зареч')) {
+        matched = cachedZones.find(z => z.name.toLowerCase().includes('запад')) || { name: 'Западный район', fee: 180, sla_min: 38, color: '#eab308' };
+        focusIntaSector('west');
+    } else {
+        focusIntaSector('center');
+    }
+    res.innerHTML = `✅ Определена зона: <b style="color:${matched.color};">${matched.name}</b> • Доставка: <b>${matched.fee} ₽</b> • Норматив: <b>${matched.sla_min} мин</b>`;
+}
+
+function saveIntaZone() {
+    const name = document.getElementById('zone-name-inp').value.trim();
+    const fee = parseInt(document.getElementById('zone-fee-inp').value || '150', 10);
+    const sla = parseInt(document.getElementById('zone-sla-inp').value || '35', 10);
+    const color = document.getElementById('zone-color-inp').value || '#10b981';
+    const freeFrom = parseInt(document.getElementById('zone-free-inp').value || '1200', 10);
+    if (!name) {
+        alert('Введите название района г. Инта');
+        return;
+    }
+    fetch('/api/map/zones_save', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ name, fee, sla_min: sla, color, free_from: freeFrom })
+    }).then(() => {
+        document.getElementById('zone-name-inp').value = '';
+        loadIntaZonesAndOrders();
+    });
+}
+
+function deleteIntaZone(id) {
+    fetch('/api/map/zones_delete', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ id })
+    }).then(() => loadIntaZonesAndOrders());
+}
+
+function resetDefaultIntaZones() {
+    fetch('/api/map/zones_reset', { method: 'POST' })
+    .then(() => loadIntaZonesAndOrders());
+}
+
+document.addEventListener('DOMContentLoaded', function() {
+    initIntaMap();
+    loadIntaZonesAndOrders();
+    setInterval(loadIntaZonesAndOrders, 10000);
+});
+</script>
+</body>
+</html>

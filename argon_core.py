@@ -692,9 +692,27 @@ def register_all(app, g):
             WHERE NOT EXISTS (SELECT 1 FROM recipes r WHERE r.menu_id = m.id)
         """).fetchall()
 
+        # Доп. данные для обновлённой админки (сводка): топ позиций, последние заказы, «в работе»
+        top_items = db.execute("""
+            SELECT oi.name, SUM(oi.qty) AS qty, SUM(oi.qty * oi.price) AS rev
+            FROM order_items oi JOIN orders o ON oi.order_id = o.id
+            WHERE o.status != 'cancelled' AND date(o.created_at) >= date('now', '-30 day')
+            GROUP BY oi.name ORDER BY qty DESC LIMIT 5
+        """).fetchall()
+        recent_orders = db.execute(
+            "SELECT id, created_at, phone, total, status FROM orders ORDER BY id DESC LIMIT 8"
+        ).fetchall()
+        active_orders_cnt = db.execute(
+            "SELECT COUNT(*) c FROM orders WHERE status IN ('new','cooking','ready','delivering')"
+        ).fetchone()["c"]
+
         return render_template(
             "admin.html",
             stats=stats, avg_check=avg_check, chart_data=chart_data,
+            chart_max=chart_data and max([d["rev"] for d in chart_data] + [1]) or 1,
+            top_items=top_items,
+            recent_orders=recent_orders,
+            active_orders_cnt=active_orders_cnt,
             menu=db.execute("SELECT * FROM menu ORDER BY sort_weight DESC, category, name").fetchall(),
             users=db.execute("SELECT id, username, role, pin_code, hourly_rate, courier_city_rate, courier_distant_rate, can_edit_menu, can_give_discount, can_view_finance, created_at FROM users ORDER BY id").fetchall(),
             zones=db.execute("SELECT * FROM delivery_zones ORDER BY is_distant, fee").fetchall(),

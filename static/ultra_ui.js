@@ -95,20 +95,20 @@
             const path = window.location.pathname;
 
             const navLinks = [
-                { href: "/", label: "Касса POS", show: true },
-                { href: "/kitchen", label: "Экран KDS", show: true },
-                { href: "/courier", label: "Курьер", show: true },
-                { href: "/admin", label: "Управление и Штат", show: isAdmin || roleData.can_edit_menu },
-                { href: "/warehouse", label: "Склад и П/Ф", show: isAdmin || roleData.can_edit_menu },
-                { href: "/accounting", label: "Бухгалтерия", show: isAdmin || roleData.can_view_finance },
-                { href: "/analytics", label: "Финансы P&L", show: isAdmin || roleData.can_view_finance },
-                { href: "/crm", label: "CRM", show: isAdmin },
-                { href: "/map", label: "Зоны", show: isAdmin }
+                { href: "/", label: "Касса POS", icon: "💳", show: true },
+                { href: "/kitchen", label: "Экран KDS", icon: "🔥", show: true },
+                { href: "/courier", label: "Курьер", icon: "🛵", show: true },
+                { href: "/admin", label: "Управление и Штат", icon: "👥", show: isAdmin || roleData.can_edit_menu },
+                { href: "/warehouse", label: "Склад и П/Ф", icon: "📦", show: isAdmin || roleData.can_edit_menu },
+                { href: "/accounting", label: "Бухгалтерия", icon: "🧮", show: isAdmin || roleData.can_view_finance },
+                { href: "/analytics", label: "Финансы P&L", icon: "📊", show: isAdmin || roleData.can_view_finance },
+                { href: "/crm", label: "CRM", icon: "🤝", show: isAdmin },
+                { href: "/map", label: "Зоны", icon: "🗺", show: isAdmin }
             ];
 
-            let navHtml = navLinks.filter(l => l.show).map(l => {
+            const navHtml = navLinks.filter(l => l.show).map(l => {
                 const active = (path === l.href) ? 'active' : '';
-                return `<a href="${l.href}" class="erp-nav-link ${active}">${l.label}</a>`;
+                return `<a href="${l.href}" class="drop-item ${active}">${l.icon} ${l.label}</a>`;
             }).join('');
 
             const ps = roleData.personal_shift;
@@ -127,7 +127,14 @@
                 <div class="erp-topbar-left">
                     <button type="button" class="btn-back-nav" onclick="window.history.length > 1 ? window.history.back() : window.location.href='/'" style="padding:4px 8px; font-size:11px;">←</button>
                     <a href="/" class="erp-brand">КРЕВЕТКА IS <span class="erp-badge">ERP</span></a>
-                    <nav class="erp-nav">${navHtml}</nav>
+                    <details class="menu-drop" id="service-menu">
+                        <summary aria-label="Открыть меню сервиса">Сервис<span class="chev">▾</span></summary>
+                        <div class="drop-panel">
+                            ${navHtml}
+                            <div class="drop-sep"></div>
+                            <a class="drop-item" href="/logout">🚪 Выйти (${roleData.username || 'Сотрудник'})</a>
+                        </div>
+                    </details>
                 </div>
                 <div class="erp-topbar-right">
                     <span class="kpi-pill">Касса: <b id="top-shift-rev">${metrics.shift_revenue} ₽</b></span>
@@ -140,6 +147,20 @@
             `;
             document.body.prepend(bar);
             applySavedTheme(localStorage.getItem('krevetka_theme') || 'dark');
+
+            // Закрытие дропдауна: клик по ссылке, вне меню, Escape
+            const drop = document.getElementById('service-menu');
+            if (drop) {
+                drop.addEventListener('click', function(e) {
+                    if (e.target.closest('a')) drop.removeAttribute('open');
+                });
+                document.addEventListener('click', function(e) {
+                    if (drop.open && !drop.contains(e.target)) drop.removeAttribute('open');
+                });
+                document.addEventListener('keydown', function(e) {
+                    if (e.key === 'Escape' && drop.open) drop.removeAttribute('open');
+                });
+            }
         });
     });
 })();
